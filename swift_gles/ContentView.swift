@@ -26,6 +26,7 @@ struct ContentView: View {
                     NavigationLink(destination: GLKViewControllerWrapper1()) {
                         Text("opgl 显示图片")
                             .padding()
+                        
                             .background(Color.blue)
                             .foregroundColor(.white)
                             .cornerRadius(10)
