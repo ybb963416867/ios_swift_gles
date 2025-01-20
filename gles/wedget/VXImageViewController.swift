@@ -38,6 +38,16 @@ class VXImageViewController: GLKViewController {
         setupGL()
     }
     
+    override func viewWillLayoutSubviews() {
+        super.viewWillLayoutSubviews()
+        
+        let glkView = self.view as! GLKView
+        print("glkview width = \(glkView.bounds.width), glkview height = \(glkView.bounds.height)")
+        let width : GLsizei = GLsizei(glkView.bounds.width)
+        let height : GLsizei = GLsizei(glkView.bounds.height)
+        glViewport(0, 0, width, height)
+    }
+    
     private func setupGL() {
         // 加载着色器
         loadPrograme()
@@ -49,31 +59,11 @@ class VXImageViewController: GLKViewController {
         texture = loadTexture(named: "cc.jpg")
     }
     
+    override func viewDidDisappear(_ animated: Bool) {
+        isPaused = true
+    }
+    
     private func setupVertexData() {
-        // 顶点数据：包括顶点坐标和纹理坐标
-        //                let vertexData: [GLfloat] = [
-        //                    1, -1, 0.0,  1.0, 0.0,  // 右下
-        //                    1, 1, 0.0,   1.0, 1.0,  // 右上
-        //                    -1, 1, 0.0,  0.0, 1.0,  // 左上
-        //
-        //                    1, -1, 0.0,  1.0, 0.0,  // 右下
-        //                    -1, 1, 0.0,  0.0, 1.0,  // 左上
-        //                    -1, -1, 0.0, 0.0, 0.0   // 左下
-        //                ]
-        
-        //        let vertexData: [GLfloat] = [
-        //            -1, 1, 0.0,  // 左上角
-        //             -1, -1, 0.0,  // 左下角
-        //             1, -1, 0.0,  // 右下角
-        //             1, 1, 0.0 // 右上角
-        //        ]
-        //
-        //        let texCoords: [GLfloat] = [
-        //            0.0, 1.0,
-        //            0.0, 0.0,
-        //            1.0, 0.0,
-        //            1.0, 1.0
-        //        ]
         
         let vertexData: [GLfloat] = [
             -1, 1, 0.0,  // 左上角
@@ -127,31 +117,7 @@ class VXImageViewController: GLKViewController {
             fatalError("无法加载子模块的图片")
         }
         
-        let width = spriteImage.width
-        let height = spriteImage.height
-        let spriteData = calloc(width * height * 4, MemoryLayout<GLubyte>.size)
-        defer { free(spriteData) }
-        
-        let spriteContext = CGContext(data: spriteData,
-                                      width: width,
-                                      height: height,
-                                      bitsPerComponent: 8,
-                                      bytesPerRow: width * 4,
-                                      space: spriteImage.colorSpace!,
-                                      bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue)
-        //        spriteContext?.translateBy(x: 0, y: CGFloat(height))
-        //        spriteContext?.scaleBy(x: 1.0, y: -1.0)
-        spriteContext?.draw(spriteImage, in: CGRect(x: 0, y: 0, width: width, height: height))
-        
-        var texture: GLuint = 0
-        glGenTextures(1, &texture)
-        glBindTexture(GLenum(GL_TEXTURE_2D), texture)
-        glTexImage2D(GLenum(GL_TEXTURE_2D), 0, GL_RGBA, GLsizei(width), GLsizei(height), 0, GLenum(GL_RGBA), GLenum(GL_UNSIGNED_BYTE), spriteData)
-        
-        glTexParameteri(GLenum(GL_TEXTURE_2D), GLenum(GL_TEXTURE_MIN_FILTER), GL_LINEAR)
-        glTexParameteri(GLenum(GL_TEXTURE_2D), GLenum(GL_TEXTURE_MAG_FILTER), GL_LINEAR)
-        
-        return texture
+        return Gl2Utils.createTexture(cgImage: spriteImage).first
     }
     
     override func glkView(_ view: GLKView, drawIn rect: CGRect) {
@@ -180,6 +146,7 @@ class VXImageViewController: GLKViewController {
         glDisableVertexAttribArray(positionHandle)
         glDisableVertexAttribArray(texCoordHandle)
         glBindBuffer(GLenum(GL_ARRAY_BUFFER),  0)
+        print("glkView")
     }
     
     private func BUFFER_OFFSET(_ i: Int) -> UnsafeRawPointer? {

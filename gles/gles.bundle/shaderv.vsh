@@ -15,8 +15,9 @@ varying lowp vec2 aCoord;
 
 //着色器城西（shader program）
 void main() {
-    //赋值坐标属性到输出变量
-    aCoord = vCoord;
+    
     // 赋值位置到内建变量gl_Position上，作为输出信息（必须）
     gl_Position = vPosition;
+    //赋值坐标属性到输出变量
+    aCoord = vCoord;
 }

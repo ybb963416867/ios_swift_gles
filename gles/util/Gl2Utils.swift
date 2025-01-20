@@ -91,6 +91,103 @@ struct Gl2Utils {
         return "No program log available."
     }
     
+    /// 将图片 转为纹理
+    static  func createTexture(cgImage image: CGImage) -> Triple<GLuint, Int, Int> {
+        let width = image.width
+        let height = image.height
+        let spriteData = calloc(width * height * 4, MemoryLayout<GLubyte>.size)
+        defer { free(spriteData) }
+        
+        let spriteContext = CGContext(data: spriteData,
+                                      width: width,
+                                      height: height,
+                                      bitsPerComponent: 8,
+                                      bytesPerRow: width * 4,
+                                      space: image.colorSpace!,
+                                      bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue)
+        //        spriteContext?.translateBy(x: 0, y: CGFloat(height))
+        //        spriteContext?.scaleBy(x: 1.0, y: -1.0)
+        spriteContext?.draw(image, in: CGRect(x: 0, y: 0, width: width, height: height))
+        
+        var texture: GLuint = 0
+        glGenTextures(1, &texture)
+        glBindTexture(GLenum(GL_TEXTURE_2D), texture)
+        glTexImage2D(GLenum(GL_TEXTURE_2D), 0, GL_RGBA, GLsizei(width), GLsizei(height), 0, GLenum(GL_RGBA), GLenum(GL_UNSIGNED_BYTE), spriteData)
+        
+        glTexParameterf(GLenum(GL_TEXTURE_2D), GLenum(GL_TEXTURE_MIN_FILTER), GLfloat(GL_NEAREST))
+        glTexParameterf(GLenum(GL_TEXTURE_2D), GLenum(GL_TEXTURE_MAG_FILTER), GLfloat(GL_LINEAR))
+        glTexParameterf(GLenum(GL_TEXTURE_2D), GLenum(GL_TEXTURE_WRAP_S), GLfloat(GL_CLAMP_TO_EDGE))
+        glTexParameterf(GLenum(GL_TEXTURE_2D), GLenum(GL_TEXTURE_WRAP_T), GLfloat(GL_CLAMP_TO_EDGE))
+        
+        return Triple(first: texture, second: width, third: height)
+    }
+    
+    /// 将图片 转为纹理
+    static  func createTexture(cgImage image: CGImage, texture: GLuint) -> Triple<GLuint, Int, Int> {
+        let width = image.width
+        let height = image.height
+        let spriteData = calloc(width * height * 4, MemoryLayout<GLubyte>.size)
+        defer { free(spriteData) }
+        
+        let spriteContext = CGContext(data: spriteData,
+                                      width: width,
+                                      height: height,
+                                      bitsPerComponent: 8,
+                                      bytesPerRow: width * 4,
+                                      space: image.colorSpace!,
+                                      bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue)
+        //        spriteContext?.translateBy(x: 0, y: CGFloat(height))
+        //        spriteContext?.scaleBy(x: 1.0, y: -1.0)
+        spriteContext?.draw(image, in: CGRect(x: 0, y: 0, width: width, height: height))
+        
+        if texture == 0 {
+            var texture: GLuint = 0
+            glGenTextures(1, &texture)
+        }
+        
+        glBindTexture(GLenum(GL_TEXTURE_2D), texture)
+        glTexImage2D(GLenum(GL_TEXTURE_2D), 0, GL_RGBA, GLsizei(width), GLsizei(height), 0, GLenum(GL_RGBA), GLenum(GL_UNSIGNED_BYTE), spriteData)
+        
+        glTexParameterf(GLenum(GL_TEXTURE_2D), GLenum(GL_TEXTURE_MIN_FILTER), GLfloat(GL_NEAREST))
+        glTexParameterf(GLenum(GL_TEXTURE_2D), GLenum(GL_TEXTURE_MAG_FILTER), GLfloat(GL_LINEAR))
+        glTexParameterf(GLenum(GL_TEXTURE_2D), GLenum(GL_TEXTURE_WRAP_S), GLfloat(GL_CLAMP_TO_EDGE))
+        glTexParameterf(GLenum(GL_TEXTURE_2D), GLenum(GL_TEXTURE_WRAP_T), GLfloat(GL_CLAMP_TO_EDGE))
+        
+        return Triple(first: texture, second: width, third: height)
+    }
+    
+    static func create2DTexture() -> GLuint {
+        var texture: GLuint = 0
+        glGenTextures(1, &texture)
+        glBindTexture(GLenum(GL_TEXTURE_2D), texture)
+        
+        glTexParameterf(GLenum(GL_TEXTURE_2D), GLenum(GL_TEXTURE_MIN_FILTER), GLfloat(GL_NEAREST))
+        glTexParameterf(GLenum(GL_TEXTURE_2D), GLenum(GL_TEXTURE_MAG_FILTER), GLfloat(GL_LINEAR))
+        glTexParameterf(GLenum(GL_TEXTURE_2D), GLenum(GL_TEXTURE_WRAP_S), GLfloat(GL_CLAMP_TO_EDGE))
+        glTexParameterf(GLenum(GL_TEXTURE_2D), GLenum(GL_TEXTURE_WRAP_T), GLfloat(GL_CLAMP_TO_EDGE))
+        glBindTexture(GLenum(GL_TEXTURE_2D), 0)
+        return texture
+    }
+    
+    ///初始化矩阵
+    static func setIdentityMatrix(_ sm: inout [Float], offset: Int = 0) {
+        // Ensure the matrix has at least 16 elements
+        guard sm.count >= offset + 16 else {
+            fatalError("Matrix must have at least 16 elements.")
+        }
+        
+        // Initialize all elements to 0
+        for i in 0..<16 {
+            sm[offset + i] = 0.0
+        }
+        
+        // Set diagonal elements to 1.0
+        for i in stride(from: 0, to: 16, by: 5) {
+            sm[offset + i] = 1.0
+        }
+    }
+    
+    
 }
 
 @inline(__always)
@@ -98,6 +195,24 @@ func check(value: Bool, lazyMessage: () -> Any){
     guard value else {
         let message = lazyMessage()
         fatalError("\(message)")
+    }
+}
+
+struct Triple<A, B, C>{
+    let first: A
+    let second: B
+    let third: C
+}
+
+extension Int {
+    func toFloat() -> Float {
+        return Float(self)
+    }
+}
+
+extension Float {
+    func toInt() -> Int{
+        return Int(self)
     }
 }
 

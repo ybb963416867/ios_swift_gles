@@ -7,6 +7,8 @@
 //  片元着色器的作用是处理由光栅化阶段生成的每个片元，最终计算出每个像素的最终颜色
 
 // 纹理坐标
+
+precision mediump float;
 varying lowp vec2 aCoord;
 // 采样器
 uniform sampler2D vTexture;

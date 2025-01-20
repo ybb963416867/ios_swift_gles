@@ -61,7 +61,7 @@ class GLKUpdate:NSObject, GLKViewControllerDelegate{
         self.glKViewControler = glKViewControler
     }
     func glkViewControllerUpdate(_ controller: GLKViewController) {
-    
+        
         redValue = (sin(self.glKViewControler.timeSinceFirstResume * 2 * Double.pi / durationOfFlash) * 0.5) + 0.5
         
         //        print(self.glKViewControler.timeSinceFirstResume)
