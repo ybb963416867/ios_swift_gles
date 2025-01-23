@@ -51,6 +51,7 @@ open class BaseTexture : IBaseTexture{
     
     
     func onSurfaceCreated() {
+        initCoordinate()
         let bundlePath = Bundle(for: VXImageViewController.self).path(forResource: "gles", ofType: "bundle")!
         
         let verterShaderStr = Gl2Utils.loadBundleFile(bundlePath: bundlePath, forResource: vertPath, ofType: "glsl")
@@ -86,7 +87,7 @@ open class BaseTexture : IBaseTexture{
             if currentRegion.getWidth() == 0 || currentRegion.getHeight() == 0 {
                 currentRegion = currentRegion.generateCoordinateRegion(left: 0, top: 0, width: screenWidth, height: screenHeight)
             }
-        
+            
             updateTexCord(coordinateRegion: currentRegion)
             glkView.setNeedsDisplay()
         }
@@ -94,32 +95,49 @@ open class BaseTexture : IBaseTexture{
     }
     
     func onDrawFrame() {
+        Gl2Utils.checkGlError()
+//        glViewport(0, 0, GLsizei(screenWidth), GLsizei(screenHeight))
         glUseProgram(shaderProgram)
         
+        Gl2Utils.checkGlError()
         glUniformMatrix4fv(matrixHandle, 1, GLboolean(GL_FALSE), matix)
+        
+        Gl2Utils.checkGlError()
         
         glBindBuffer(GLenum(GL_ARRAY_BUFFER), vertexBuffer)
         glBufferData(GLenum(GL_ARRAY_BUFFER), vertexData.count * MemoryLayout<GLfloat>.size, vertexData, GLenum(GL_STATIC_DRAW))
+        
+        
+        Gl2Utils.checkGlError()
         
         glEnableVertexAttribArray(positionHandle)
         glVertexAttribPointer(positionHandle, 3, GLenum(GL_FLOAT), GLboolean(GL_FALSE), GLsizei(MemoryLayout<GLfloat>.size * 3), nil)
         
         glBindBuffer(GLenum(GL_ARRAY_BUFFER), texCoordBuffer)
         
+        Gl2Utils.checkGlError()
+        
         glEnableVertexAttribArray(texCoordHandle)
         glVertexAttribPointer(texCoordHandle, 2, GLenum(GL_FLOAT), GLboolean(GL_FALSE), GLsizei(MemoryLayout<GLfloat>.size * 2), nil)
         //BUFFER_OFFSET(MemoryLayout<GLfloat>.size * 3)
         
+        Gl2Utils.checkGlError()
         
         glActiveTexture(GLenum(GL_TEXTURE0))
         glBindTexture(GLenum(GL_TEXTURE_2D), textureInfo.textureId)
         glUniform1i(uTextureHandle, 0)
         
+        Gl2Utils.checkGlError()
+        
         glDrawArrays(GLenum(GL_TRIANGLE_FAN), 0, 4)
         
+        Gl2Utils.checkGlError()
         glDisableVertexAttribArray(positionHandle)
         glDisableVertexAttribArray(texCoordHandle)
         glBindBuffer(GLenum(GL_ARRAY_BUFFER),  0)
+        glBindTexture(GLenum(GL_TEXTURE_2D), 0)
+        
+        Gl2Utils.checkGlError()
     }
     
     func initCoordinate() {

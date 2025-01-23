@@ -95,6 +95,7 @@ class YSGSImageView1: GLKViewController {
         button3.tintColor = .white
         button3.layer.cornerRadius = 5
         button3.frame.size = CGSize(width: 100, height: 40)
+        button3.addTarget(self, action: #selector(onChangeTextureTest2), for: .touchUpInside)
         stackView.addArrangedSubview(button3)
     }
     
@@ -108,6 +109,11 @@ class YSGSImageView1: GLKViewController {
         render.test()
     }
     
+    @objc private func onChangeTextureTest2() {
+        // 动态加载新的纹理
+        render.test2()
+    }
+    
     override func viewWillLayoutSubviews() {
         super.viewWillLayoutSubviews()
         
@@ -115,6 +121,10 @@ class YSGSImageView1: GLKViewController {
         let width : GLsizei = GLsizei(glkView.bounds.width)
         let height : GLsizei = GLsizei(glkView.bounds.height)
         render.onSurfaceChanged(width: Int(width), height: Int(height))
+    }
+    
+    override func viewDidAppear(_ animated: Bool) {
+        isPaused = true
     }
     
     override func viewDidDisappear(_ animated: Bool) {

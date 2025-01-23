@@ -186,8 +186,16 @@ struct Gl2Utils {
             sm[offset + i] = 1.0
         }
     }
-    
-    
+
+    static func checkGlError(file: String = #file, function: String = #function, line: Int = #line) {
+        let error = glGetError()
+        if error != GL_NO_ERROR {
+            // 提取调用者的文件名
+            let fileName = (file as NSString).lastPathComponent
+            // 打印错误信息，包括调用者的文件名、函数名和行号
+            print("OpenGL Error: \(error) | Called in \(fileName):\(function) at line \(line)")
+        }
+    }
 }
 
 @inline(__always)
