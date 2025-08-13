@@ -11,7 +11,6 @@ class ImageTexture: BaseTexture {
         
         MatrixUtil.getPicOriginMatrix(matrix: &matix, imgWidth: getTextureInfo().width, imgHeight: getTextureInfo().height, viewWidth: coordinateRegion.getWidth().toInt(), viewHeight: coordinateRegion.getHeight().toInt(), surfaceWidth: getScreenWidth(), surfaceHeight: getScreenHeight(), coordinateRegion: coordinateRegion, type: PositionType.LEFT_TOP)
         
-        print("ImageTexture cord = \(getTexCoordinateRegion()) \n")
     }
 }
 

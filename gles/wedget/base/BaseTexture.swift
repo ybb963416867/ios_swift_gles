@@ -176,9 +176,7 @@ open class BaseTexture : IBaseTexture{
     
     func updateTexCord(coordinateRegion: CoordinateRegion) {
         currentRegion = coordinateRegion
-        print("updateTexCord = \(currentRegion)")
         let newVertices = currentRegion.getFloatArray(screenWidth: screenWidth, screenHeight: screenHeight)
-        print("newVertices = \(newVertices)")
         vertexData = newVertices
     }
     
