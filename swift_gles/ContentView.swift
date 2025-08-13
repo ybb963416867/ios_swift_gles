@@ -39,7 +39,7 @@ struct ContentView: View {
                             .cornerRadius(10)
                     }
                     
-                    NavigationLink(destination: YSGSImageViewWrapper1()) {
+                    NavigationLink(destination: SurfaceViewContent()) {
                         Text("抽离")
                             .padding()
                             .background(Color.blue)
