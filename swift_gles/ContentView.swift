@@ -46,6 +46,16 @@ struct ContentView: View {
                             .foregroundColor(.white)
                             .cornerRadius(10)
                     }
+                    
+                    NavigationLink(destination: CaptrueView()) {
+                        Text("截图")
+                            .padding()
+                            .background(Color.blue)
+                            .foregroundColor(.white)
+                            .cornerRadius(10)
+                    }
+                    
+                    
                 }
                 
                 
