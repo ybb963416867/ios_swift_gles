@@ -35,9 +35,10 @@ class Render: IRender {
     // OpenGL ES 相关
     private var pixelBuffer: CVPixelBuffer?
     private var recordingContext: EAGLContext?
-    private var viewProvider: (() -> (AnyView, CGRect))? = nil
+    private var viewProvider: (() -> (AnyView, CGRect, CGRect))? = nil
 
-    func setViewProvider(_ provider: @escaping () -> (AnyView, CGRect)) {
+    func setViewProvider(_ provider: @escaping () -> (AnyView, CGRect, CGRect))
+    {
         self.viewProvider = provider
         updateUITexture()
     }
@@ -482,39 +483,62 @@ class Render: IRender {
     func updateUITexture() {
 
         guard let provider = viewProvider else { return }
-        let (uiView, rect) = provider()
+        let (uiView, rect, globalRect) = provider()
 
-        if let viewImage = renderSwiftUIViewToImage(uiView, rect: rect),
-            let vImage = viewImage.cgImage
-        {
+//        if let viewImage = renderWindowImage(uiView, rect: globalRect),
+//            let vImage = viewImage.cgImage
+//        {
+//            let result4 = imageTextureList[4].getTextureInfo()
+//                .generateBitmapTexture(cgImage: vImage)
+//            imageTextureList[4].updateTextureInfo(
+//                textureInfo: result4,
+//                isRecoverCord: false,
+//                iTextureVisibility: .VISIBLE
+//            )
+//            let result5 = imageTextureList[5].getTextureInfo()
+//                .generateBitmapTexture(cgImage: vImage)
+//            imageTextureList[5].updateTextureInfo(
+//                textureInfo: result5,
+//                isRecoverCord: false,
+//                iTextureVisibility: .VISIBLE
+//            )
+//
+//            print("screenWidth = \(screenWidth) screenHeight = \(screenHeight)")
+//
+//            glkView.setNeedsDisplay()
+//        }
 
-            let result4 = imageTextureList[4].getTextureInfo()
-                .generateBitmapTexture(cgImage: vImage)
-            imageTextureList[4].updateTextureInfo(
-                textureInfo: result4,
-                isRecoverCord: false,
-                iTextureVisibility: .VISIBLE
-            )
-            let result5 = imageTextureList[5].getTextureInfo()
-                .generateBitmapTexture(cgImage: vImage)
-            imageTextureList[5].updateTextureInfo(
-                textureInfo: result5,
-                isRecoverCord: false,
-                iTextureVisibility: .VISIBLE
-            )
-
-            print("screenWidth = \(screenWidth) screenHeight = \(screenHeight)")
-
-            glkView.setNeedsDisplay()
-
-            //                        let dateFormatter = DateFormatter()
-            //                        dateFormatter.dateFormat = "yyyyMMdd_HHmmss"
-            //                        let timestamp = dateFormatter.string(from: Date())
-            //            if let url = vImage.savaPngToDocuments(fileName: timestamp) {
-            //                print("url = \(url.path())")
-            //            }
-            //            _ = render.saveImageAsPNG(viewImage, to: timestamp)
-        }
+                if let viewImage = renderSwiftUIViewToImage(uiView, rect: rect),
+                    let vImage = viewImage.cgImage
+                {
+        
+                    let result4 = imageTextureList[4].getTextureInfo()
+                        .generateBitmapTexture(cgImage: vImage)
+                    imageTextureList[4].updateTextureInfo(
+                        textureInfo: result4,
+                        isRecoverCord: false,
+                        iTextureVisibility: .VISIBLE
+                    )
+                    let result5 = imageTextureList[5].getTextureInfo()
+                        .generateBitmapTexture(cgImage: vImage)
+                    imageTextureList[5].updateTextureInfo(
+                        textureInfo: result5,
+                        isRecoverCord: false,
+                        iTextureVisibility: .VISIBLE
+                    )
+        
+                    print("screenWidth = \(screenWidth) screenHeight = \(screenHeight)")
+        
+                    glkView.setNeedsDisplay()
+        
+                    //                        let dateFormatter = DateFormatter()
+                    //                        dateFormatter.dateFormat = "yyyyMMdd_HHmmss"
+                    //                        let timestamp = dateFormatter.string(from: Date())
+                    //            if let url = vImage.savaPngToDocuments(fileName: timestamp) {
+                    //                print("url = \(url.path())")
+                    //            }
+                    //            _ = render.saveImageAsPNG(viewImage, to: timestamp)
+                }
 
     }
 
@@ -673,6 +697,60 @@ extension Render {
                 afterScreenUpdates: true
             )
         }
+    }
+
+    public func renderWindowImage<V: View>(_ view: V, rect: CGRect)
+        -> UIImage?
+    {
+        guard
+            let windowScene = UIApplication.shared.connectedScenes.first
+                as? UIWindowScene,
+            let window = windowScene.windows.first
+        else {
+            print("无法获取窗口")
+            return nil
+        }
+
+        let renderer = UIGraphicsImageRenderer(size: window.bounds.size)
+        let fullScreenImage = renderer.image { context in
+            window.drawHierarchy(in: window.bounds, afterScreenUpdates: true)
+        }
+
+        // 裁剪出 overlayViews 的精确区域
+        let croppedImage = self.cropImage(fullScreenImage, toRect: rect)
+
+        return croppedImage
+    }
+
+    // 辅助方法：精确裁剪图片
+    private func cropImage(_ image: UIImage, toRect rect: CGRect) -> UIImage? {
+        guard let cgImage = image.cgImage else { return nil }
+
+        let scale = UIScreen.main.scale
+        let scaledRect = CGRect(
+            x: rect.origin.x * scale,
+            y: rect.origin.y * scale,
+            width: rect.size.width * scale,
+            height: rect.size.height * scale
+        )
+
+        let imageRect = CGRect(
+            x: 0,
+            y: 0,
+            width: CGFloat(cgImage.width),
+            height: CGFloat(cgImage.height)
+        )
+        let clampedRect = scaledRect.intersection(imageRect)
+
+        guard !clampedRect.isEmpty,
+            let croppedCGImage = cgImage.cropping(to: clampedRect)
+        else { return nil }
+
+        return UIImage(
+            cgImage: croppedCGImage,
+            scale: scale,
+            orientation: image.imageOrientation
+        )
     }
 
     public func saveImageAsPNG(_ image: UIImage, to fileName: String) -> URL? {

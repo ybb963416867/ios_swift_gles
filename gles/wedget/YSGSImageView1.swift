@@ -12,8 +12,8 @@ import UIKit
 class YSGSImageView1: GLKViewController {
 
     private var mContext: EAGLContext?
-    private var viewProvider: (() -> (AnyView, CGRect))? = nil
-    func setViewProvider(_ provider: @escaping () -> (AnyView, CGRect)) {
+    private var viewProvider: (() -> (AnyView, CGRect, CGRect))? = nil
+    func setViewProvider(_ provider: @escaping () -> (AnyView, CGRect, CGRect)) {
         self.viewProvider = provider
         render.setViewProvider(provider)
     }
@@ -83,8 +83,8 @@ class YSGSImageView1: GLKViewController {
             defer { isProcessingAction = false }
 
             switch action {
-            case .captureOverlay(let view, let cgRect):
-                setViewProvider { (view, cgRect) }
+            case .captureOverlay(let view, let cgRect, let cgGlobalRect):
+                setViewProvider { (view, cgRect, cgGlobalRect) }
                 break
             case .startRecording:
                 startRecoder()

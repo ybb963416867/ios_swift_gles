@@ -9,7 +9,7 @@ import SwiftUI
 
 // MARK: - 录制动作枚举
 public enum RecordingAction {
-    case captureOverlay(AnyView, CGRect)
+    case captureOverlay(AnyView, CGRect, CGRect)
     case loadTexture
     case updateTexture(Int)
     case startRecording
@@ -21,6 +21,7 @@ public struct SurfaceViewContent: View {
     // 用于传递录制指令的状态
     @State private var recordingAction: RecordingAction?
     @State private var cgRect: CGRect = .zero
+    @State private var cgGlobalRect: CGRect = .zero
 
     public init() {
 
@@ -33,8 +34,14 @@ public struct SurfaceViewContent: View {
                 GeometryReader { geo in
                     Rectangle().fill(Color.black.opacity(0.1)).onAppear {
                         cgRect = CGRect(origin: .zero, size: geo.size)
-                        recordingAction = .captureOverlay(AnyView(overlayViews), cgRect)
-                        print("safeAreaInsets = \(geo.safeAreaInsets)")
+                        cgGlobalRect = geo.frame(in: .global)
+                        recordingAction = .captureOverlay(AnyView(overlayViews), cgRect, cgGlobalRect)
+                        print("safeAreaInsets = \(geo.safeAreaInsets) cgGlobalRect = \(cgGlobalRect)")
+                    }.onChange(of: geo.frame(in: .global)) { oldValue, newValue in
+                        cgRect = CGRect(origin: .zero, size: geo.size)
+                        cgGlobalRect = geo.frame(in: .global)
+                        recordingAction = .captureOverlay(AnyView(overlayViews), cgRect, cgGlobalRect)
+                        print("onChange safeAreaInsets = \(geo.safeAreaInsets) cgGlobalRect = \(cgGlobalRect)")
                     }
                     
                     
@@ -79,7 +86,7 @@ public struct SurfaceViewContent: View {
                 alignment: .bottomTrailing
             )
 
-        }.background(Color.yellow.opacity(0.4))
+        }.background(Color.yellow.opacity(0.2))
 
     }
 
@@ -91,7 +98,7 @@ public struct SurfaceViewContent: View {
                 VStack(spacing: 8) {
                     
                     Button("加载ui纹理") {
-                        recordingAction = .captureOverlay(AnyView(overlayViews), cgRect)
+                        recordingAction = .captureOverlay(AnyView(overlayViews), cgRect, cgGlobalRect)
                     }
                     .font(.caption)
                     .padding(8)
