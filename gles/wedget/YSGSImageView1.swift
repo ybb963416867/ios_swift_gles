@@ -106,6 +106,8 @@ class YSGSImageView1: GLKViewController {
                     render.updateUITexture()
                 }
                 break
+            case .takeScreenshot:
+                break
             }
         }
     }

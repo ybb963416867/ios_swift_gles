@@ -2,7 +2,12 @@ import AVFoundation
 import GLKit
 import SwiftUI
 
-// MARK: - 重构后的渲染类
+// MARK: - 截图完成回调
+protocol ScreenshotDelegate: AnyObject {
+    func didCaptureScreenshot(_ image: UIImage?, fileURL: URL?)
+}
+
+// MARK: - 重构后的渲染类（添加截图功能）
 class RenderFromViewTexture: IRender {
     
     // MARK: - Properties
@@ -16,13 +21,17 @@ class RenderFromViewTexture: IRender {
     
     private var imageTextureList: [IBaseTexture]
     private var rect: CGRect = .zero
-    private var frameInterval: Int = 20
+    private var frameInterval: Int = 15
     private var rootView: UIView? = nil
     private var isLoadTexture = false
     
     // 视频录制器
     private var videoRecorder: VideoRecorder
     private var recordingContext: EAGLContext?
+    
+    // 截图相关
+    private let screenshotManager = ScreenshotManager.shared
+    weak var screenshotDelegate: ScreenshotDelegate?
     
     // MARK: - Initialization
     
@@ -140,7 +149,7 @@ class RenderFromViewTexture: IRender {
         
         glBindFramebuffer(GLenum(GL_FRAMEBUFFER), 0)
         
-        // 渲染到第二个 FBO（用于录制）
+        // 渲染到第二个 FBO（用于录制和截图）
         glBindFramebuffer(
             GLenum(GL_FRAMEBUFFER),
             combineTexture.getFboFrameBuffer()[1]
@@ -285,6 +294,65 @@ class RenderFromViewTexture: IRender {
         displayLink?.invalidate()
     }
     
+    // MARK: - Screenshot Methods
+    
+    /// 捕获截图
+    func captureScreenshot(saveToFile: Bool = true, saveToPhotoLibrary: Bool = false) -> UIImage? {
+        // 确保 OpenGL 上下文正确
+        if EAGLContext.current() == nil {
+            EAGLContext.setCurrent(glkView.context)
+        }
+        
+        // 从 FBO 捕获截图
+        let image = screenshotManager.captureScreenshot(
+            from: combineTexture.getFboFrameBuffer()[1],
+            width: Int(screenWidth),
+            height: Int(screenHeight)
+        )
+        
+        guard let capturedImage = image else {
+            print("截图失败")
+            screenshotDelegate?.didCaptureScreenshot(nil, fileURL: nil)
+            return nil
+        }
+        
+        var fileURL: URL? = nil
+        
+        // 保存到文档目录
+        if saveToFile {
+            fileURL = screenshotManager.saveToDocuments(capturedImage)
+            if let url = fileURL {
+                print("截图已保存到文档目录: \(url.path)")
+            }
+        }
+        
+        // 保存到相册
+        if saveToPhotoLibrary {
+            screenshotManager.saveToPhotoLibrary(capturedImage) { success, error in
+                if success {
+                    print("截图已保存到相册")
+                } else {
+                    print("保存到相册失败: \(error?.localizedDescription ?? "未知错误")")
+                }
+            }
+        }
+        
+        // 通知代理
+        screenshotDelegate?.didCaptureScreenshot(capturedImage, fileURL: fileURL)
+        
+        return capturedImage
+    }
+    
+    /// 获取所有截图文件
+    func getAllScreenshots() -> [URL] {
+        return screenshotManager.getAllScreenshots()
+    }
+    
+    /// 删除截图文件
+    func deleteScreenshot(at url: URL) -> Bool {
+        return screenshotManager.deleteScreenshot(at: url)
+    }
+    
     // MARK: - Recording Methods
     
     /// 开始录制视频
@@ -336,24 +404,21 @@ class RenderFromViewTexture: IRender {
 extension RenderFromViewTexture: VideoRecorderDelegate {
     
     func videoRecorderDidStartRecording(_ recorder: VideoRecorder) {
-        print("录制开始")
-        // 可以在这里添加 UI 更新或其他逻辑
+        print("📹 录制开始")
     }
     
     func videoRecorderDidStopRecording(_ recorder: VideoRecorder, success: Bool, outputURL: URL?) {
         if success, let url = outputURL {
-            print("录制成功，保存至: \(url.path)")
-            print("总共录制帧数: \(recorder.frameCount)")
+            print("✅ 录制成功，保存至: \(url.path)")
+            print("📊 总共录制帧数: \(recorder.frameCount)")
         } else {
-            print("录制失败")
+            print("❌ 录制失败")
         }
-        // 可以在这里添加 UI 更新或其他逻辑
     }
     
     func videoRecorderDidCaptureFrame(_ recorder: VideoRecorder, frameCount: Int64) {
-        // 可以在这里更新进度或帧计数器
         if frameCount % 30 == 0 {
-            print("已录制 \(frameCount) 帧")
+            print("📹 已录制 \(frameCount) 帧")
         }
     }
 }

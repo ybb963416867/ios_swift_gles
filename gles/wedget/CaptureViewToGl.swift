@@ -10,6 +10,8 @@ import SwiftUI
 public struct CaptureViewToGl: View {
     @State private var overlayFrame: CGRect = .zero
     @State private var recordingAction: RecordingAction?
+    @State private var capturedScreenshot: UIImage?
+    @State private var screenshotURL: URL?
     public init() {}
 
     public var body: some View {
@@ -27,12 +29,23 @@ public struct CaptureViewToGl: View {
                             )
                             print("Overlay frame: \(frame)")
                         }
+                    
                     controlButtons
                 }
 
                 YSGSSurfaceViewFromViewWrapper(
-                    recordingAction: $recordingAction
+                    recordingAction: $recordingAction,
+                    capturedScreenshot: $capturedScreenshot,
+                    screenshotURL: $screenshotURL
                 )
+                
+                ZStack {
+                    if let  capturedScreenshot = capturedScreenshot {
+                        Image(uiImage: capturedScreenshot)
+                    } else {
+                        Color.yellow.opacity(0.4)
+                    }
+                }
             }
 
         }
@@ -162,6 +175,20 @@ public struct CaptureViewToGl: View {
                     .font(.caption)
                     .padding(8)
                     .background(Color.orange.opacity(0.3))
+                    .foregroundColor(.white)
+                    .cornerRadius(5)
+                }
+                .padding(10)
+                .background(Color.yellow.opacity(0.3))
+                .cornerRadius(10)
+                
+                VStack(spacing: 8) {
+                    Button("截图") {
+                        recordingAction = .takeScreenshot
+                    }
+                    .font(.caption)
+                    .padding(8)
+                    .background(Color.indigo.opacity(0.3))
                     .foregroundColor(.white)
                     .cornerRadius(5)
                 }

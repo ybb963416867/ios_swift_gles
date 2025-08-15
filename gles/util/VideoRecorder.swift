@@ -50,6 +50,8 @@ class VideoRecorder {
     private var videoWidth: Int = 0
     private var videoHeight: Int = 0
     
+    private var firstValidFrameCaptured: Bool = false
+    
     var isUserRealRate: Bool = true
     
     // MARK: - Types
@@ -142,16 +144,12 @@ class VideoRecorder {
                 return false
             }
             
-            // 初始化时间
-            recordingStartTime = .zero
-            recordingStartTimeAbs = CFAbsoluteTimeGetCurrent()
-            lastPresentationTime = .zero
-            
             // 开始会话
             assetWriter!.startSession(atSourceTime: .zero)
             
             // 更新状态
             isRecording = true
+            firstValidFrameCaptured = false
             frameCount = 0
             lastCaptureTime = 0
             
@@ -181,6 +179,7 @@ class VideoRecorder {
         }
         
         isRecording = false
+        firstValidFrameCaptured = false
         isProcessingFrames = false
         
         print("正在停止录制，处理剩余帧...")
@@ -240,12 +239,12 @@ class VideoRecorder {
         }
 
         lastCaptureTime = currentTime
-        let presentationTime = if isUserRealRate { calculatePresentationTimeReal() } else { calculatePresentationTime() }
         
         guard let pixelData = reusablePixelData else { return }
         
         // 绑定 FBO 并读取像素
         glBindFramebuffer(GLenum(GL_FRAMEBUFFER), fbo)
+        
         glReadPixels(
             0, 0,
             GLsizei(videoWidth), GLsizei(videoHeight),
@@ -253,7 +252,17 @@ class VideoRecorder {
             GLenum(GL_UNSIGNED_BYTE),
             pixelData
         )
-        
+        let presentationTime: CMTime
+        if !firstValidFrameCaptured {
+            presentationTime = .zero
+            // 初始化时间
+            recordingStartTimeAbs = CFAbsoluteTimeGetCurrent()
+            lastPresentationTime = .zero
+            recordingStartTime = .zero
+            firstValidFrameCaptured = true
+        }  else {
+            presentationTime = if isUserRealRate { calculatePresentationTimeReal() } else { calculatePresentationTime() }
+        }
         // 创建帧数据
         let frameData = Data(bytes: pixelData, count: pixelDataSize)
       
@@ -264,7 +273,7 @@ class VideoRecorder {
             width: videoWidth,
             height: videoHeight
         )
-        
+        glBindFramebuffer(GLenum(GL_FRAMEBUFFER), fbo)
         // 添加到待处理队列
         pendingFramesLock.lock()
         pendingFrames.append(pendingFrame)
