@@ -138,7 +138,6 @@ class MultipleFboCombineTexture : IBaseFboCombineTexture{
             fatalError("")
         }
         glBindFramebuffer(GLenum(GL_FRAMEBUFFER), 0)
-        glViewport(0, 0, GLsizei(screenWidth) , GLsizei(screenHeight))
         glkView.bindDrawable()
         Gl2Utils.checkGlError()
         

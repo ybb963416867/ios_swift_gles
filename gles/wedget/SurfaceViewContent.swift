@@ -7,15 +7,6 @@
 
 import SwiftUI
 
-// MARK: - 录制动作枚举
-public enum RecordingAction {
-    case captureOverlay(AnyView, CGRect, CGRect)
-    case loadTexture
-    case updateTexture(Int)
-    case startRecording
-    case stopRecording
-}
-
 public struct SurfaceViewContent: View {
 
     // 用于传递录制指令的状态

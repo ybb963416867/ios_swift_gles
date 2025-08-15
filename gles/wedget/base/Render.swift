@@ -36,6 +36,7 @@ class Render: IRender {
     private var pixelBuffer: CVPixelBuffer?
     private var recordingContext: EAGLContext?
     private var viewProvider: (() -> (AnyView, CGRect, CGRect))? = nil
+    private var recordingView: UIView?
 
     func setViewProvider(_ provider: @escaping () -> (AnyView, CGRect, CGRect))
     {
@@ -106,6 +107,19 @@ class Render: IRender {
     func startRecording(outputURL: URL, playbackSpeed: Double = 1.0) -> Bool {
         guard !isRecording else { return false }
 
+        // 获取当前窗口的根视图
+        guard
+            let windowScene = UIApplication.shared.connectedScenes.first
+                as? UIWindowScene,
+            let window = windowScene.windows.first,
+            let rootView = window.rootViewController?.view
+        else {
+            print("无法获取根视图")
+            return false
+        }
+
+        recordingView = rootView
+
         // 设置播放速度
         videoSpeedMultiplier = playbackSpeed
 
@@ -138,11 +152,11 @@ class Render: IRender {
                 outputSettings: videoSettings
             )
             assetWriterInput?.expectsMediaDataInRealTime = true
-
+            //kCVPixelFormatType_32BGRA
             // 配置像素缓冲区适配器
             let pixelBufferAttributes: [String: Any] = [
                 kCVPixelBufferPixelFormatTypeKey as String:
-                    kCVPixelFormatType_32BGRA,
+                    kCVPixelFormatType_32ARGB,
                 kCVPixelBufferWidthKey as String: Int(screenWidth),
                 kCVPixelBufferHeightKey as String: Int(screenHeight),
                 kCVPixelBufferOpenGLESCompatibilityKey as String: true,
@@ -277,7 +291,8 @@ class Render: IRender {
 
         // 如果正在录制，捕获当前帧
         if isRecording {
-            captureFrame()
+                        captureFrame()
+//            captureRootViewFrame()
         }
 
         glkView.deleteDrawable()
@@ -287,6 +302,32 @@ class Render: IRender {
     }
 
     // MARK: - 帧捕获方法
+
+    private func captureRootViewFrame() {
+        guard let view = self.recordingView,
+            let input = self.assetWriterInput,
+            let adaptor = self.assetWriterPixelBufferAdaptor,
+            input.isReadyForMoreMediaData
+        else { return }
+
+        guard let provider = viewProvider else { return }
+        let (uiView, rect, globalRect) = provider()
+
+        let presentationTime = calculatePresentationTime()
+
+        autoreleasepool {
+            if let pixelBuffer = captureViewToPixelBuffer(
+                view: view,
+                frame: globalRect
+            ) {
+                adaptor.append(
+                    pixelBuffer,
+                    withPresentationTime: presentationTime
+                )
+                frameCount += 1
+            }
+        }
+    }
 
     private func captureFrame() {
         guard isRecording,
@@ -485,60 +526,60 @@ class Render: IRender {
         guard let provider = viewProvider else { return }
         let (uiView, rect, globalRect) = provider()
 
-//        if let viewImage = renderWindowImage(uiView, rect: globalRect),
-//            let vImage = viewImage.cgImage
-//        {
-//            let result4 = imageTextureList[4].getTextureInfo()
-//                .generateBitmapTexture(cgImage: vImage)
-//            imageTextureList[4].updateTextureInfo(
-//                textureInfo: result4,
-//                isRecoverCord: false,
-//                iTextureVisibility: .VISIBLE
-//            )
-//            let result5 = imageTextureList[5].getTextureInfo()
-//                .generateBitmapTexture(cgImage: vImage)
-//            imageTextureList[5].updateTextureInfo(
-//                textureInfo: result5,
-//                isRecoverCord: false,
-//                iTextureVisibility: .VISIBLE
-//            )
-//
-//            print("screenWidth = \(screenWidth) screenHeight = \(screenHeight)")
-//
-//            glkView.setNeedsDisplay()
-//        }
+        //        if let viewImage = renderWindowImage(uiView, rect: globalRect),
+        //            let vImage = viewImage.cgImage
+        //        {
+        //            let result4 = imageTextureList[4].getTextureInfo()
+        //                .generateBitmapTexture(cgImage: vImage)
+        //            imageTextureList[4].updateTextureInfo(
+        //                textureInfo: result4,
+        //                isRecoverCord: false,
+        //                iTextureVisibility: .VISIBLE
+        //            )
+        //            let result5 = imageTextureList[5].getTextureInfo()
+        //                .generateBitmapTexture(cgImage: vImage)
+        //            imageTextureList[5].updateTextureInfo(
+        //                textureInfo: result5,
+        //                isRecoverCord: false,
+        //                iTextureVisibility: .VISIBLE
+        //            )
+        //
+        //            print("screenWidth = \(screenWidth) screenHeight = \(screenHeight)")
+        //
+        //            glkView.setNeedsDisplay()
+        //        }
 
-                if let viewImage = renderSwiftUIViewToImage(uiView, rect: rect),
-                    let vImage = viewImage.cgImage
-                {
-        
-                    let result4 = imageTextureList[4].getTextureInfo()
-                        .generateBitmapTexture(cgImage: vImage)
-                    imageTextureList[4].updateTextureInfo(
-                        textureInfo: result4,
-                        isRecoverCord: false,
-                        iTextureVisibility: .VISIBLE
-                    )
-                    let result5 = imageTextureList[5].getTextureInfo()
-                        .generateBitmapTexture(cgImage: vImage)
-                    imageTextureList[5].updateTextureInfo(
-                        textureInfo: result5,
-                        isRecoverCord: false,
-                        iTextureVisibility: .VISIBLE
-                    )
-        
-                    print("screenWidth = \(screenWidth) screenHeight = \(screenHeight)")
-        
-                    glkView.setNeedsDisplay()
-        
-                    //                        let dateFormatter = DateFormatter()
-                    //                        dateFormatter.dateFormat = "yyyyMMdd_HHmmss"
-                    //                        let timestamp = dateFormatter.string(from: Date())
-                    //            if let url = vImage.savaPngToDocuments(fileName: timestamp) {
-                    //                print("url = \(url.path())")
-                    //            }
-                    //            _ = render.saveImageAsPNG(viewImage, to: timestamp)
-                }
+        if let viewImage = renderSwiftUIViewToImage(uiView, rect: rect),
+            let vImage = viewImage.cgImage
+        {
+
+            let result4 = imageTextureList[4].getTextureInfo()
+                .generateBitmapTexture(cgImage: vImage)
+            imageTextureList[4].updateTextureInfo(
+                textureInfo: result4,
+                isRecoverCord: false,
+                iTextureVisibility: .VISIBLE
+            )
+            let result5 = imageTextureList[5].getTextureInfo()
+                .generateBitmapTexture(cgImage: vImage)
+            imageTextureList[5].updateTextureInfo(
+                textureInfo: result5,
+                isRecoverCord: false,
+                iTextureVisibility: .VISIBLE
+            )
+
+            print("screenWidth = \(screenWidth) screenHeight = \(screenHeight)")
+
+            glkView.setNeedsDisplay()
+
+            //                        let dateFormatter = DateFormatter()
+            //                        dateFormatter.dateFormat = "yyyyMMdd_HHmmss"
+            //                        let timestamp = dateFormatter.string(from: Date())
+            //            if let url = vImage.savaPngToDocuments(fileName: timestamp) {
+            //                print("url = \(url.path())")
+            //            }
+            //            _ = render.saveImageAsPNG(viewImage, to: timestamp)
+        }
 
     }
 
@@ -777,5 +818,79 @@ extension Render {
             print("保存失败: \(error)")
             return nil
         }
+    }
+
+    func captureViewToPixelBuffer(view: UIView, frame: CGRect) -> CVPixelBuffer?
+    {
+        print("frame = \(frame)")
+        let scale = UIScreen.main.scale
+        let scaledSize = CGSize(
+            width: frame.width * scale,
+            height: frame.height * scale
+        )
+
+        var pixelBuffer: CVPixelBuffer?
+        let status = CVPixelBufferCreate(
+            kCFAllocatorDefault,
+            Int(scaledSize.width),
+            Int(scaledSize.height),
+            kCVPixelFormatType_32ARGB,
+            nil,
+            &pixelBuffer
+        )
+
+        guard status == kCVReturnSuccess, let buffer = pixelBuffer else {
+            print("创建像素缓冲区失败")
+            return nil
+        }
+
+        CVPixelBufferLockBaseAddress(
+            buffer,
+            CVPixelBufferLockFlags(rawValue: 0)
+        )
+
+        let context = CGContext(
+            data: CVPixelBufferGetBaseAddress(buffer),
+            width: Int(scaledSize.width),
+            height: Int(scaledSize.height),
+            bitsPerComponent: 8,
+            bytesPerRow: CVPixelBufferGetBytesPerRow(buffer),
+            space: CGColorSpaceCreateDeviceRGB(),
+            bitmapInfo: CGImageAlphaInfo.noneSkipFirst.rawValue
+        )
+
+        guard let cgContext = context else {
+            CVPixelBufferUnlockBaseAddress(
+                buffer,
+                CVPixelBufferLockFlags(rawValue: 0)
+            )
+            print("创建CGContext失败")
+            return nil
+        }
+
+        // 关键修复：正确处理坐标系统
+        cgContext.saveGState()
+
+        // 翻转Y轴以匹配UIView坐标系
+        cgContext.translateBy(x: 0, y: scaledSize.height)
+        cgContext.scaleBy(x: scale, y: -scale)
+
+        // 平移到目标区域
+        cgContext.translateBy(x: -frame.origin.x, y: -frame.origin.y)
+
+        // 设置裁剪区域
+        cgContext.clip(to: frame)
+
+        // 渲染视图
+        view.layer.render(in: cgContext)
+
+        cgContext.restoreGState()
+
+        CVPixelBufferUnlockBaseAddress(
+            buffer,
+            CVPixelBufferLockFlags(rawValue: 0)
+        )
+
+        return buffer
     }
 }

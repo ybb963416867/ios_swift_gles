@@ -11,202 +11,500 @@ struct Gl2Utils {
     static func loadProgram(vSource: String, fSource: String) -> GLuint {
         var programe = GLuint()
         programe = glCreateProgram()
-        
-        let vertexShader = compileShader(type: GLenum(GL_VERTEX_SHADER), shaderString: vSource)
-        
-        let fragmentShader = compileShader(type: GLenum(GL_FRAGMENT_SHADER), shaderString: fSource)
-        
+
+        let vertexShader = compileShader(
+            type: GLenum(GL_VERTEX_SHADER),
+            shaderString: vSource
+        )
+
+        let fragmentShader = compileShader(
+            type: GLenum(GL_FRAGMENT_SHADER),
+            shaderString: fSource
+        )
+
         glAttachShader(programe, vertexShader)
         glAttachShader(programe, fragmentShader)
         glLinkProgram(programe)
-        
-        var programeStatus : GLint = 0
+
+        var programeStatus: GLint = 0
         glGetProgramiv(programe, GLenum(GL_LINK_STATUS), &programeStatus)
-        
-        check(value: programeStatus == GL_TRUE){
+
+        check(value: programeStatus == GL_TRUE) {
             getProgramLinkLog(program: programe)
         }
-        
+
         glDeleteShader(vertexShader)
         glDeleteShader(fragmentShader)
-        
+
         return programe
     }
-    
-    
-    static func loadBundleFile(bundlePath: String, forResource name: String, ofType ext : String) -> String {
-        guard let path = Bundle(path: bundlePath)?.path(forResource: name, ofType: ext) else {
+
+    static func loadBundleFile(
+        bundlePath: String,
+        forResource name: String,
+        ofType ext: String
+    ) -> String {
+        guard
+            let path = Bundle(path: bundlePath)?.path(
+                forResource: name,
+                ofType: ext
+            )
+        else {
             fatalError("loadBundleFile error")
         }
         return try! String(contentsOfFile: path, encoding: .utf8)
     }
-    
+
     static func compileShader(type: GLenum, shaderString: String) -> GLuint {
-        var shader : GLuint = 0
-        shaderString.withCString(){ pointer in
+        var shader: GLuint = 0
+        shaderString.withCString { pointer in
             var source: UnsafePointer<GLchar>? = pointer
             shader = glCreateShader(type)
             glShaderSource(shader, 1, &source, nil)
             glCompileShader(shader)
         }
-        
+
         var compileShaderStatus = GLint()
-        
+
         glGetShaderiv(shader, GLenum(GL_COMPILE_STATUS), &compileShaderStatus)
-        
-        check(value: compileShaderStatus == GL_TRUE){
+
+        check(value: compileShaderStatus == GL_TRUE) {
             Gl2Utils.getShaderCompileLog(shader: shader)
         }
-        
+
         return shader
-        
+
     }
     static func getShaderCompileLog(shader: GLuint) -> String {
-        var logLength: GLint = 0;
+        var logLength: GLint = 0
         glGetShaderiv(shader, GLenum(GL_INFO_LOG_LENGTH), &logLength)
         if logLength > 0 {
-            let log = UnsafeMutablePointer<GLchar>.allocate(capacity: Int(logLength))
-            defer {log.deallocate()}
+            let log = UnsafeMutablePointer<GLchar>.allocate(
+                capacity: Int(logLength)
+            )
+            defer { log.deallocate() }
             glGetShaderInfoLog(shader, logLength, nil, log)
             return String(cString: log)
         } else {
             return "No compile log available. \(shader)"
         }
     }
-    
+
     static func getProgramLinkLog(program: GLuint) -> String {
         var logLength: GLint = 0
         glGetProgramiv(program, GLenum(GL_INFO_LOG_LENGTH), &logLength)
-        
+
         if logLength > 0 {
-            let log = UnsafeMutablePointer<GLchar>.allocate(capacity: Int(logLength))
-            
-            defer{
+            let log = UnsafeMutablePointer<GLchar>.allocate(
+                capacity: Int(logLength)
+            )
+
+            defer {
                 log.deallocate()
             }
-            
+
             glGetProgramInfoLog(program, logLength, nil, log)
             return String(cString: log)
         }
         return "No program log available."
     }
-    
+
     /// 将图片 转为纹理
-    static  func createTexture(cgImage image: CGImage) -> Triple<GLuint, Int, Int> {
+    static func createTexture(cgImage image: CGImage) -> Triple<
+        GLuint, Int, Int
+    > {
         let width = image.width
         let height = image.height
         let spriteData = calloc(width * height * 4, MemoryLayout<GLubyte>.size)
         defer { free(spriteData) }
-        
-        let spriteContext = CGContext(data: spriteData,
-                                      width: width,
-                                      height: height,
-                                      bitsPerComponent: 8,
-                                      bytesPerRow: width * 4,
-                                      space: image.colorSpace!,
-                                      bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue)
+
+        let spriteContext = CGContext(
+            data: spriteData,
+            width: width,
+            height: height,
+            bitsPerComponent: 8,
+            bytesPerRow: width * 4,
+            space: image.colorSpace!,
+            bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue
+        )
         //        spriteContext?.translateBy(x: 0, y: CGFloat(height))
         //        spriteContext?.scaleBy(x: 1.0, y: -1.0)
-        spriteContext?.draw(image, in: CGRect(x: 0, y: 0, width: width, height: height))
-        
+        spriteContext?.draw(
+            image,
+            in: CGRect(x: 0, y: 0, width: width, height: height)
+        )
+
         var texture: GLuint = 0
         glGenTextures(1, &texture)
         glBindTexture(GLenum(GL_TEXTURE_2D), texture)
-        glTexImage2D(GLenum(GL_TEXTURE_2D), 0, GL_RGBA, GLsizei(width), GLsizei(height), 0, GLenum(GL_RGBA), GLenum(GL_UNSIGNED_BYTE), spriteData)
-        
-        glTexParameterf(GLenum(GL_TEXTURE_2D), GLenum(GL_TEXTURE_MIN_FILTER), GLfloat(GL_NEAREST))
-        glTexParameterf(GLenum(GL_TEXTURE_2D), GLenum(GL_TEXTURE_MAG_FILTER), GLfloat(GL_LINEAR))
-        glTexParameterf(GLenum(GL_TEXTURE_2D), GLenum(GL_TEXTURE_WRAP_S), GLfloat(GL_CLAMP_TO_EDGE))
-        glTexParameterf(GLenum(GL_TEXTURE_2D), GLenum(GL_TEXTURE_WRAP_T), GLfloat(GL_CLAMP_TO_EDGE))
-        
+        glTexImage2D(
+            GLenum(GL_TEXTURE_2D),
+            0,
+            GL_RGBA,
+            GLsizei(width),
+            GLsizei(height),
+            0,
+            GLenum(GL_RGBA),
+            GLenum(GL_UNSIGNED_BYTE),
+            spriteData
+        )
+
+        glTexParameterf(
+            GLenum(GL_TEXTURE_2D),
+            GLenum(GL_TEXTURE_MIN_FILTER),
+            GLfloat(GL_NEAREST)
+        )
+        glTexParameterf(
+            GLenum(GL_TEXTURE_2D),
+            GLenum(GL_TEXTURE_MAG_FILTER),
+            GLfloat(GL_LINEAR)
+        )
+        glTexParameterf(
+            GLenum(GL_TEXTURE_2D),
+            GLenum(GL_TEXTURE_WRAP_S),
+            GLfloat(GL_CLAMP_TO_EDGE)
+        )
+        glTexParameterf(
+            GLenum(GL_TEXTURE_2D),
+            GLenum(GL_TEXTURE_WRAP_T),
+            GLfloat(GL_CLAMP_TO_EDGE)
+        )
+
         return Triple(first: texture, second: width, third: height)
     }
-    
+
     /// 将图片 转为纹理
-    static  func createTexture(cgImage image: CGImage, texture: GLuint) -> Triple<GLuint, Int, Int> {
+    static func createTexture(cgImage image: CGImage, texture: GLuint)
+        -> Triple<GLuint, Int, Int>
+    {
         let width = image.width
         let height = image.height
         let spriteData = calloc(width * height * 4, MemoryLayout<GLubyte>.size)
         defer { free(spriteData) }
-        
-        let spriteContext = CGContext(data: spriteData,
-                                      width: width,
-                                      height: height,
-                                      bitsPerComponent: 8,
-                                      bytesPerRow: width * 4,
-                                      space: image.colorSpace!,
-                                      bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue)
+
+        let spriteContext = CGContext(
+            data: spriteData,
+            width: width,
+            height: height,
+            bitsPerComponent: 8,
+            bytesPerRow: width * 4,
+            space: image.colorSpace!,
+            bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue
+        )
         //        spriteContext?.translateBy(x: 0, y: CGFloat(height))
         //        spriteContext?.scaleBy(x: 1.0, y: -1.0)
-        spriteContext?.draw(image, in: CGRect(x: 0, y: 0, width: width, height: height))
-        
+        spriteContext?.draw(
+            image,
+            in: CGRect(x: 0, y: 0, width: width, height: height)
+        )
+
         if texture == 0 {
             var texture: GLuint = 0
             glGenTextures(1, &texture)
         }
-        
+
         glBindTexture(GLenum(GL_TEXTURE_2D), texture)
-        glTexImage2D(GLenum(GL_TEXTURE_2D), 0, GL_RGBA, GLsizei(width), GLsizei(height), 0, GLenum(GL_RGBA), GLenum(GL_UNSIGNED_BYTE), spriteData)
-        
-        glTexParameterf(GLenum(GL_TEXTURE_2D), GLenum(GL_TEXTURE_MIN_FILTER), GLfloat(GL_NEAREST))
-        glTexParameterf(GLenum(GL_TEXTURE_2D), GLenum(GL_TEXTURE_MAG_FILTER), GLfloat(GL_LINEAR))
-        glTexParameterf(GLenum(GL_TEXTURE_2D), GLenum(GL_TEXTURE_WRAP_S), GLfloat(GL_CLAMP_TO_EDGE))
-        glTexParameterf(GLenum(GL_TEXTURE_2D), GLenum(GL_TEXTURE_WRAP_T), GLfloat(GL_CLAMP_TO_EDGE))
-        
+        glTexImage2D(
+            GLenum(GL_TEXTURE_2D),
+            0,
+            GL_RGBA,
+            GLsizei(width),
+            GLsizei(height),
+            0,
+            GLenum(GL_RGBA),
+            GLenum(GL_UNSIGNED_BYTE),
+            spriteData
+        )
+
+        glTexParameterf(
+            GLenum(GL_TEXTURE_2D),
+            GLenum(GL_TEXTURE_MIN_FILTER),
+            GLfloat(GL_NEAREST)
+        )
+        glTexParameterf(
+            GLenum(GL_TEXTURE_2D),
+            GLenum(GL_TEXTURE_MAG_FILTER),
+            GLfloat(GL_LINEAR)
+        )
+        glTexParameterf(
+            GLenum(GL_TEXTURE_2D),
+            GLenum(GL_TEXTURE_WRAP_S),
+            GLfloat(GL_CLAMP_TO_EDGE)
+        )
+        glTexParameterf(
+            GLenum(GL_TEXTURE_2D),
+            GLenum(GL_TEXTURE_WRAP_T),
+            GLfloat(GL_CLAMP_TO_EDGE)
+        )
+
         return Triple(first: texture, second: width, third: height)
     }
-    
+
+    static func createTextureFromView(_ view: UIView, texture: GLuint)
+        -> Triple<GLuint, Int, Int>
+    {
+        let scale = UIScreen.main.scale
+        let frame = view.frame
+        let scaledSize = CGSize(
+            width: frame.width * scale,
+            height: frame.height * scale
+        )
+        let width = Int(scaledSize.width)
+        let height = Int(scaledSize.height)
+
+        // 分配像素数据内存
+        let spriteData = calloc(width * height * 4, MemoryLayout<GLubyte>.size)
+        defer { free(spriteData) }
+
+        // 创建 CGContext 直接渲染到像素数据
+        let colorSpace = CGColorSpaceCreateDeviceRGB()
+        guard
+            let context = CGContext(
+                data: spriteData,
+                width: width,
+                height: height,
+                bitsPerComponent: 8,
+                bytesPerRow: width * 4,
+                space: colorSpace,
+                bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue
+            )
+        else {
+            print("创建CGContext失败")
+            return Triple(first: 0, second: 0, third: 0)
+        }
+
+        // 处理坐标系统 - 重要：OpenGL纹理坐标系与UIView不同
+        context.saveGState()
+
+        // 翻转Y轴以匹配UIView坐标系，然后再翻转回来适配OpenGL
+        context.translateBy(x: 0, y: CGFloat(height))
+        context.scaleBy(x: scale, y: -scale)
+
+        // 平移到目标区域
+        context.translateBy(x: -frame.origin.x, y: -frame.origin.y)
+ 
+        // 渲染视图到context
+        view.layer.render(in: context)
+
+        context.restoreGState()
+
+        // 创建或使用现有纹理
+        var finalTexture = texture
+        if finalTexture == 0 {
+            glGenTextures(1, &finalTexture)
+        }
+
+        // 绑定纹理并上传数据
+        glBindTexture(GLenum(GL_TEXTURE_2D), finalTexture)
+        glTexImage2D(
+            GLenum(GL_TEXTURE_2D),
+            0,
+            GL_RGBA,
+            GLsizei(width),
+            GLsizei(height),
+            0,
+            GLenum(GL_RGBA),
+            GLenum(GL_UNSIGNED_BYTE),
+            spriteData
+        )
+
+        // 设置纹理参数
+        glTexParameterf(
+            GLenum(GL_TEXTURE_2D),
+            GLenum(GL_TEXTURE_MIN_FILTER),
+            GLfloat(GL_NEAREST)
+        )
+        glTexParameterf(
+            GLenum(GL_TEXTURE_2D),
+            GLenum(GL_TEXTURE_MAG_FILTER),
+            GLfloat(GL_LINEAR)
+        )
+        glTexParameterf(
+            GLenum(GL_TEXTURE_2D),
+            GLenum(GL_TEXTURE_WRAP_S),
+            GLfloat(GL_CLAMP_TO_EDGE)
+        )
+        glTexParameterf(
+            GLenum(GL_TEXTURE_2D),
+            GLenum(GL_TEXTURE_WRAP_T),
+            GLfloat(GL_CLAMP_TO_EDGE)
+        )
+
+        return Triple(first: finalTexture, second: width, third: height)
+
+    }
+
+    static func createTextureFromView(
+        _ view: UIView,
+        frame: CGRect,
+        texture: GLuint
+    ) -> Triple<GLuint, Int, Int> {
+        let scale = UIScreen.main.scale
+        let scaledSize = CGSize(
+            width: frame.width * scale,
+            height: frame.height * scale
+        )
+        let width = Int(scaledSize.width)
+        let height = Int(scaledSize.height)
+
+        // 分配像素数据内存
+        let spriteData = calloc(width * height * 4, MemoryLayout<GLubyte>.size)
+        defer { free(spriteData) }
+
+        // 创建 CGContext 直接渲染到像素数据
+        let colorSpace = CGColorSpaceCreateDeviceRGB()
+        guard
+            let context = CGContext(
+                data: spriteData,
+                width: width,
+                height: height,
+                bitsPerComponent: 8,
+                bytesPerRow: width * 4,
+                space: colorSpace,
+                bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue
+            )
+        else {
+            print("创建CGContext失败")
+            return Triple(first: 0, second: 0, third: 0)
+        }
+
+        // 处理坐标系统 - 重要：OpenGL纹理坐标系与UIView不同
+        context.saveGState()
+
+        // 翻转Y轴以匹配UIView坐标系，然后再翻转回来适配OpenGL
+        context.translateBy(x: 0, y: CGFloat(height))
+        context.scaleBy(x: scale, y: -scale)
+
+        // 平移到目标区域
+        context.translateBy(x: -frame.origin.x, y: -frame.origin.y)
+
+        // 设置裁剪区域
+        context.clip(to: frame)
+
+        // 渲染视图到context
+        view.layer.render(in: context)
+
+        context.restoreGState()
+
+        // 创建或使用现有纹理
+        var finalTexture = texture
+        if finalTexture == 0 {
+            glGenTextures(1, &finalTexture)
+        }
+
+        // 绑定纹理并上传数据
+        glBindTexture(GLenum(GL_TEXTURE_2D), finalTexture)
+        glTexImage2D(
+            GLenum(GL_TEXTURE_2D),
+            0,
+            GL_RGBA,
+            GLsizei(width),
+            GLsizei(height),
+            0,
+            GLenum(GL_RGBA),
+            GLenum(GL_UNSIGNED_BYTE),
+            spriteData
+        )
+
+        // 设置纹理参数
+        glTexParameterf(
+            GLenum(GL_TEXTURE_2D),
+            GLenum(GL_TEXTURE_MIN_FILTER),
+            GLfloat(GL_NEAREST)
+        )
+        glTexParameterf(
+            GLenum(GL_TEXTURE_2D),
+            GLenum(GL_TEXTURE_MAG_FILTER),
+            GLfloat(GL_LINEAR)
+        )
+        glTexParameterf(
+            GLenum(GL_TEXTURE_2D),
+            GLenum(GL_TEXTURE_WRAP_S),
+            GLfloat(GL_CLAMP_TO_EDGE)
+        )
+        glTexParameterf(
+            GLenum(GL_TEXTURE_2D),
+            GLenum(GL_TEXTURE_WRAP_T),
+            GLfloat(GL_CLAMP_TO_EDGE)
+        )
+
+        return Triple(first: finalTexture, second: width, third: height)
+
+    }
+
     static func create2DTexture() -> GLuint {
         var texture: GLuint = 0
         glGenTextures(1, &texture)
         glBindTexture(GLenum(GL_TEXTURE_2D), texture)
-        
-        glTexParameterf(GLenum(GL_TEXTURE_2D), GLenum(GL_TEXTURE_MIN_FILTER), GLfloat(GL_NEAREST))
-        glTexParameterf(GLenum(GL_TEXTURE_2D), GLenum(GL_TEXTURE_MAG_FILTER), GLfloat(GL_LINEAR))
-        glTexParameterf(GLenum(GL_TEXTURE_2D), GLenum(GL_TEXTURE_WRAP_S), GLfloat(GL_CLAMP_TO_EDGE))
-        glTexParameterf(GLenum(GL_TEXTURE_2D), GLenum(GL_TEXTURE_WRAP_T), GLfloat(GL_CLAMP_TO_EDGE))
+
+        glTexParameterf(
+            GLenum(GL_TEXTURE_2D),
+            GLenum(GL_TEXTURE_MIN_FILTER),
+            GLfloat(GL_NEAREST)
+        )
+        glTexParameterf(
+            GLenum(GL_TEXTURE_2D),
+            GLenum(GL_TEXTURE_MAG_FILTER),
+            GLfloat(GL_LINEAR)
+        )
+        glTexParameterf(
+            GLenum(GL_TEXTURE_2D),
+            GLenum(GL_TEXTURE_WRAP_S),
+            GLfloat(GL_CLAMP_TO_EDGE)
+        )
+        glTexParameterf(
+            GLenum(GL_TEXTURE_2D),
+            GLenum(GL_TEXTURE_WRAP_T),
+            GLfloat(GL_CLAMP_TO_EDGE)
+        )
         glBindTexture(GLenum(GL_TEXTURE_2D), 0)
         return texture
     }
-    
+
     ///初始化矩阵
     static func setIdentityMatrix(_ sm: inout [Float], offset: Int = 0) {
         // Ensure the matrix has at least 16 elements
         guard sm.count >= offset + 16 else {
             fatalError("Matrix must have at least 16 elements.")
         }
-        
+
         // Initialize all elements to 0
         for i in 0..<16 {
             sm[offset + i] = 0.0
         }
-        
+
         // Set diagonal elements to 1.0
         for i in stride(from: 0, to: 16, by: 5) {
             sm[offset + i] = 1.0
         }
     }
 
-    static func checkGlError(file: String = #file, function: String = #function, line: Int = #line) {
+    static func checkGlError(
+        file: String = #file,
+        function: String = #function,
+        line: Int = #line
+    ) {
         let error = glGetError()
         if error != GL_NO_ERROR {
             // 提取调用者的文件名
             let fileName = (file as NSString).lastPathComponent
             // 打印错误信息，包括调用者的文件名、函数名和行号
-            print("OpenGL Error: \(error) | Called in \(fileName):\(function) at line \(line)")
+            print(
+                "OpenGL Error: \(error) | Called in \(fileName):\(function) at line \(line)"
+            )
         }
     }
 }
 
 @inline(__always)
-func check(value: Bool, lazyMessage: () -> Any){
+func check(value: Bool, lazyMessage: () -> Any) {
     guard value else {
         let message = lazyMessage()
         fatalError("\(message)")
     }
 }
 
-struct Triple<A, B, C>{
+struct Triple<A, B, C> {
     let first: A
     let second: B
     let third: C
@@ -219,9 +517,7 @@ extension Int {
 }
 
 extension Float {
-    func toInt() -> Int{
+    func toInt() -> Int {
         return Int(self)
     }
 }
-
-

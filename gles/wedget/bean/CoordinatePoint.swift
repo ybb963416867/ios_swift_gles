@@ -43,6 +43,30 @@ extension TextureInfo{
         newInstance.height = result.third
         return newInstance
     }
+    
+    public func generaTextureFromView(_ view: UIView, frame: CGRect) -> TextureInfo {
+        var newInstance = self
+        if newInstance.textureId == 0 {
+            newInstance.textureId = Gl2Utils.create2DTexture()
+        }
+        let result = Gl2Utils.createTextureFromView(view, frame: frame, texture: newInstance.textureId)
+        newInstance.textureId = result.first
+        newInstance.width = result.second
+        newInstance.height = result.third
+        return newInstance
+    }
+    
+    public func generaTextureFromView(_ view: UIView) -> TextureInfo {
+        var newInstance = self
+        if newInstance.textureId == 0 {
+            newInstance.textureId = Gl2Utils.create2DTexture()
+        }
+        let result = Gl2Utils.createTextureFromView(view, texture: newInstance.textureId)
+        newInstance.textureId = result.first
+        newInstance.width = result.second
+        newInstance.height = result.third
+        return newInstance
+    }
 }
 
 

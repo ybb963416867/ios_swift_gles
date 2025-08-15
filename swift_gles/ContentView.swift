@@ -56,6 +56,14 @@ struct ContentView: View {
                             .cornerRadius(10)
                     }
                     
+                    NavigationLink(destination: CaptureViewToGl()) {
+                        Text("view渲染纹理并显示")
+                            .padding()
+                            .background(Color.blue)
+                            .foregroundColor(.white)
+                            .cornerRadius(10)
+                    }
+                    
                     
                 }
                 
