@@ -1,10 +1,4 @@
 import AVFoundation
-//
-//  YSGSSurfaceViewFromViewRender.swift
-//  swift_gles
-//
-//  Created by yunshen on 2025/8/14.
-//
 import GLKit
 import SwiftUI
 
@@ -26,17 +20,34 @@ class RenderFromViewTexture: IRender {
     // 录制相关属性
     private var assetWriter: AVAssetWriter?
     private var assetWriterInput: AVAssetWriterInput?
-    private var assetWriterPixelBufferAdaptor:
-        AVAssetWriterInputPixelBufferAdaptor?
+    private var assetWriterPixelBufferAdaptor: AVAssetWriterInputPixelBufferAdaptor?
     private var isRecording = false
     private var recordingStartTime: CMTime?
     private var frameCount: Int64 = 0
-    private let recordingFrameRate: Int32 = 30  // 录制帧率
-    private var videoSpeedMultiplier: Double = 1.0  // 视频播放速度倍数
-    private var recordingStartTimeAbs: CFAbsoluteTime = 0  // 录制开始的绝对时间
+    private let recordingFrameRate: Int32 = 30
+    private var videoSpeedMultiplier: Double = 1.0
+    private var recordingStartTimeAbs: CFAbsoluteTime = 0
+    
     // OpenGL ES 相关
-    private var pixelBuffer: CVPixelBuffer?
     private var recordingContext: EAGLContext?
+    
+    // 性能优化相关
+    private let recordingQueue = DispatchQueue(label: "com.recording.queue", qos: .userInitiated)
+    private var pixelBufferPool: CVPixelBufferPool?
+    private var reusablePixelData: UnsafeMutablePointer<UInt8>?
+    private var pixelDataSize: Int = 0
+    private var pendingFrames = [PendingFrame]()
+    private let pendingFramesLock = NSLock()
+    private var lastCaptureTime: CFAbsoluteTime = 0
+    private let minCaptureInterval: CFAbsoluteTime = 1.0 / 30.0 // 30 FPS max
+    
+    // 用于存储待处理的帧数据
+    private struct PendingFrame {
+        let pixelData: Data
+        let presentationTime: CMTime
+        let width: Int
+        let height: Int
+    }
 
     init(glkView: GLKView) {
         self.glkView = glkView
@@ -48,7 +59,6 @@ class RenderFromViewTexture: IRender {
         )
 
         imageTextureList = [
-
             ImageTexture1(
                 glkView: glkView,
                 vertPath: "base_vert",
@@ -103,6 +113,12 @@ class RenderFromViewTexture: IRender {
         glViewport(0, 0, glWidth, glHeight)
         self.screenWidth = glWidth
         self.screenHeight = glHeight
+        
+        // 更新像素数据缓冲区大小
+        pixelDataSize = width * height * 4
+        reusablePixelData?.deallocate()
+        reusablePixelData = UnsafeMutablePointer<UInt8>.allocate(capacity: pixelDataSize)
+        
         combineTexture.onSurfaceChanged(
             screenWidth: width,
             screenHeight: height
@@ -125,12 +141,8 @@ class RenderFromViewTexture: IRender {
             GLenum(GL_FRAMEBUFFER),
             combineTexture.getFboFrameBuffer()[0]
         )
-        // 设置视口为 FBO 的尺寸
         Gl2Utils.checkGlError()
         glViewport(0, 0, screenWidth, screenHeight)
-
-        //        // 清除 FBO
-        //        Gl2Utils.checkGlError()
         glClear(GLbitfield(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT))
 
         for i in 0..<imageTextureList.count {
@@ -147,8 +159,6 @@ class RenderFromViewTexture: IRender {
         )
         Gl2Utils.checkGlError()
         glViewport(0, 0, screenWidth, screenHeight)
-        //        // 清除 FBO
-        //        Gl2Utils.checkGlError()
         glClear(GLbitfield(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT))
         glEnable(GLenum(GL_BLEND))
         glBlendFunc(GLenum(GL_SRC_ALPHA), GLenum(GL_ONE_MINUS_SRC_ALPHA))
@@ -158,12 +168,16 @@ class RenderFromViewTexture: IRender {
 
         glBindFramebuffer(GLenum(GL_FRAMEBUFFER), 0)
 
+        // 优化：只在需要时捕获帧，并使用时间限制
         if isRecording {
-            captureFrame()
+            let currentTime = CFAbsoluteTimeGetCurrent()
+            if currentTime - lastCaptureTime >= minCaptureInterval {
+                captureFrameAsync()
+                lastCaptureTime = currentTime
+            }
         }
 
         glkView.deleteDrawable()
-        // 删除旧的 Drawable
         combineTexture.onDrawFrame(textureIdIndex: 1)
         Gl2Utils.checkGlError()
     }
@@ -215,25 +229,21 @@ class RenderFromViewTexture: IRender {
 
     func test() {
         if let rootView = rootView {
-            if let view = findViewByIdentifier("complexContainer", in: rootView)
-            {
-                //                print("找到了")
-                if let fileUil = view.asImage().savePngToDocuments(
+            if let view = findViewByIdentifier("complexContainer", in: rootView) {
+                if let fileUrl = view.asImage().savePngToDocuments(
                     fileName: "aa"
                 ) {
-                    print("save success \(fileUil.absoluteString)")
+                    print("save success \(fileUrl.absoluteString)")
                 } else {
-                    print("save failu")
+                    print("save fail")
                 }
             } else {
                 print("没有找到")
             }
         }
-
     }
 
     func updateViewTexture() {
-
         isLoadTexture = true
 
         if self.rootView == nil {
@@ -249,10 +259,7 @@ class RenderFromViewTexture: IRender {
         }
 
         if let rootView = self.rootView {
-
-            if let view = findViewByIdentifier("complexContainer", in: rootView)
-            {
-
+            if let view = findViewByIdentifier("complexContainer", in: rootView) {
                 let result = imageTextureList[2].getTextureInfo()
                     .generaTextureFromView(view)
 
@@ -264,7 +271,6 @@ class RenderFromViewTexture: IRender {
 
                 glkView.setNeedsDisplay()
             }
-
         }
     }
 
@@ -288,18 +294,11 @@ class RenderFromViewTexture: IRender {
         glkView.setNeedsDisplay()
     }
 
-    /**
-     * 递归查找具有指定accessibilityIdentifier的视图
-     */
-    private func findViewByIdentifier(_ identifier: String, in view: UIView)
-        -> UIView?
-    {
-        // 检查当前视图
+    private func findViewByIdentifier(_ identifier: String, in view: UIView) -> UIView? {
         if view.accessibilityIdentifier == identifier {
             return view
         }
 
-        // 递归检查所有子视图
         for subview in view.subviews {
             if let found = findViewByIdentifier(identifier, in: subview) {
                 return found
@@ -313,10 +312,11 @@ class RenderFromViewTexture: IRender {
         updateViewTexture()
     }
 
+    // MARK: - 优化后的录制功能
+
     func startRecording(outputURL: URL, playbackSpeed: Double = 1.0) -> Bool {
         guard !isRecording else { return false }
 
-        // 设置播放速度
         videoSpeedMultiplier = playbackSpeed
 
         do {
@@ -337,9 +337,10 @@ class RenderFromViewTexture: IRender {
                 AVVideoWidthKey: Int(screenWidth),
                 AVVideoHeightKey: Int(screenHeight),
                 AVVideoCompressionPropertiesKey: [
-                    AVVideoAverageBitRateKey: screenWidth * screenHeight * 4,  // 比特率
-                    AVVideoProfileLevelKey:
-                        AVVideoProfileLevelH264BaselineAutoLevel,
+                    AVVideoAverageBitRateKey: screenWidth * screenHeight * 4,
+                    AVVideoProfileLevelKey: AVVideoProfileLevelH264BaselineAutoLevel,
+                    AVVideoExpectedSourceFrameRateKey: recordingFrameRate,
+                    AVVideoMaxKeyFrameIntervalKey: recordingFrameRate * 2,
                 ],
             ]
 
@@ -347,24 +348,25 @@ class RenderFromViewTexture: IRender {
                 mediaType: .video,
                 outputSettings: videoSettings
             )
-            assetWriterInput?.expectsMediaDataInRealTime = true
-            //kCVPixelFormatType_32BGRA
-            // 配置像素缓冲区适配器
+            assetWriterInput?.expectsMediaDataInRealTime = false // 改为false以优化性能
+
+            // 创建像素缓冲池
             let pixelBufferAttributes: [String: Any] = [
-                kCVPixelBufferPixelFormatTypeKey as String:
-                    kCVPixelFormatType_32BGRA,
+                kCVPixelBufferPixelFormatTypeKey as String: kCVPixelFormatType_32BGRA,
                 kCVPixelBufferWidthKey as String: Int(screenWidth),
                 kCVPixelBufferHeightKey as String: Int(screenHeight),
                 kCVPixelBufferOpenGLESCompatibilityKey as String: true,
+                kCVPixelBufferIOSurfacePropertiesKey as String: [:],
             ]
 
-            assetWriterPixelBufferAdaptor =
-                AVAssetWriterInputPixelBufferAdaptor(
-                    assetWriterInput: assetWriterInput!,
-                    sourcePixelBufferAttributes: pixelBufferAttributes
-                )
+            assetWriterPixelBufferAdaptor = AVAssetWriterInputPixelBufferAdaptor(
+                assetWriterInput: assetWriterInput!,
+                sourcePixelBufferAttributes: pixelBufferAttributes
+            )
 
-            // 添加输入到 writer
+            // 获取像素缓冲池
+            pixelBufferPool = assetWriterPixelBufferAdaptor?.pixelBufferPool
+
             if assetWriter!.canAdd(assetWriterInput!) {
                 assetWriter!.add(assetWriterInput!)
             } else {
@@ -372,13 +374,17 @@ class RenderFromViewTexture: IRender {
                 return false
             }
 
-            // 开始写入会话
             assetWriter!.startWriting()
             recordingStartTime = CMTime.zero
-            recordingStartTimeAbs = CFAbsoluteTimeGetCurrent()  // 记录开始录制的绝对时间
+            recordingStartTimeAbs = CFAbsoluteTimeGetCurrent()
             assetWriter!.startSession(atSourceTime: recordingStartTime!)
             isRecording = true
             frameCount = 0
+            lastCaptureTime = 0
+            
+            // 启动异步处理线程
+            startFrameProcessing()
+            
             return true
 
         } catch {
@@ -395,47 +401,47 @@ class RenderFromViewTexture: IRender {
 
         isRecording = false
 
-        assetWriterInput?.markAsFinished()
+        // 等待所有待处理的帧完成
+        recordingQueue.async { [weak self] in
+            guard let self = self else { return }
+            
+            // 处理剩余的帧
+            self.processPendingFrames()
+            
+            // 标记输入完成
+            self.assetWriterInput?.markAsFinished()
 
-        assetWriter.finishWriting { [weak self] in
-            DispatchQueue.main.async {
-
-                let success = assetWriter.status == .completed
-                let outputURL = success ? assetWriter.outputURL : nil
-                // 清理资源
-                self?.assetWriter = nil
-                self?.assetWriterInput = nil
-                self?.assetWriterPixelBufferAdaptor = nil
-                self?.recordingStartTime = nil
-                self?.recordingStartTimeAbs = 0
-                self?.frameCount = 0
-                completion(success, outputURL)
+            // 完成写入
+            assetWriter.finishWriting {
+                DispatchQueue.main.async {
+                    let success = assetWriter.status == .completed
+                    let outputURL = success ? assetWriter.outputURL : nil
+                    
+                    // 清理资源
+                    self.cleanupRecordingResources()
+                    
+                    completion(success, outputURL)
+                }
             }
         }
     }
 
-    private func captureFrame() {
+    private func captureFrameAsync() {
         guard isRecording,
-                let assetWriter = self.assetWriter,
-                assetWriter.status == .writing,  //
-                let assetWriterInput = self.assetWriterInput,
-                assetWriterInput.isReadyForMoreMediaData,  //
-                let pixelBufferAdaptor = self.assetWriterPixelBufferAdaptor
-          else {
-              return
-          }
+              let pixelData = reusablePixelData else {
+            return
+        }
 
-        // 从 FBO 读取像素数据
         let width = Int(screenWidth)
         let height = Int(screenHeight)
-        let dataSize = width * height * 4
-        var pixelData = [UInt8](repeating: 0, count: dataSize)
-
+        
         // 绑定 FBO 并读取像素
         glBindFramebuffer(
             GLenum(GL_FRAMEBUFFER),
             combineTexture.getFboFrameBuffer()[1]
         )
+        
+        // 直接读取到预分配的缓冲区
         glReadPixels(
             0,
             0,
@@ -443,104 +449,162 @@ class RenderFromViewTexture: IRender {
             screenHeight,
             GLenum(GL_RGBA),
             GLenum(GL_UNSIGNED_BYTE),
-            &pixelData
+            pixelData
         )
-
-        // 创建 CVPixelBuffer - 使用 BGRA 格式匹配 AssetWriter 的设置
-        var pixelBuffer: CVPixelBuffer?
-        let pixelBufferAttributes: [String: Any] = [
-            kCVPixelBufferPixelFormatTypeKey as String:
-                kCVPixelFormatType_32BGRA,
-            kCVPixelBufferWidthKey as String: width,
-            kCVPixelBufferHeightKey as String: height,
-            kCVPixelBufferIOSurfacePropertiesKey as String: [:],
-        ]
-
-        let status = CVPixelBufferCreate(
-            kCFAllocatorDefault,
-            width,
-            height,
-            kCVPixelFormatType_32BGRA,
-            pixelBufferAttributes as CFDictionary,
-            &pixelBuffer
-        )
-
-        guard status == kCVReturnSuccess, let buffer = pixelBuffer else {
-            print("创建 CVPixelBuffer 失败，错误码: \(status)")
-            // 打印具体的错误信息
-            switch status {
-            case kCVReturnInvalidPixelFormat:
-                print("无效的像素格式")
-            case kCVReturnInvalidSize:
-                print("无效的尺寸")
-            case kCVReturnPixelBufferNotOpenGLCompatible:
-                print("像素缓冲区与 OpenGL 不兼容")
-            case kCVReturnAllocationFailed:
-                print("内存分配失败")
-            default:
-                print("未知错误")
-            }
-            return
-        }
-
-        // 将像素数据复制到 CVPixelBuffer，并转换 RGBA 到 BGRA
-        CVPixelBufferLockBaseAddress(
-            buffer,
-            CVPixelBufferLockFlags(rawValue: 0)
-        )
-
-        if let baseAddress = CVPixelBufferGetBaseAddress(buffer) {
-            let bytesPerRow = CVPixelBufferGetBytesPerRow(buffer)
-            let dstBuffer = baseAddress.assumingMemoryBound(to: UInt8.self)
-
-            // 只需要翻转图像（OpenGL 坐标系是底部开始的）
-            for y in 0..<height {
-                for x in 0..<width {
-                    let srcIndex = (y * width + x) * 4
-                    let dstIndex = ((height - 1 - y) * (bytesPerRow / 4) + x) * 4
-
-                    // 直接复制 RGBA，不需要通道转换
-                    // RGBA -> BGRA
-                    dstBuffer[dstIndex] = pixelData[srcIndex + 2]     // B
-                    dstBuffer[dstIndex + 1] = pixelData[srcIndex + 1] // G
-                    dstBuffer[dstIndex + 2] = pixelData[srcIndex]     // R
-                    dstBuffer[dstIndex + 3] = pixelData[srcIndex + 3] // A
-                }
-            }
-        }
-
-        CVPixelBufferUnlockBaseAddress(
-            buffer,
-            CVPixelBufferLockFlags(rawValue: 0)
-        )
-
-        // 计算当前帧的时间戳（考虑播放速度）
+        
+        // 创建数据副本并计算时间戳
+        let frameData = Data(bytes: pixelData, count: pixelDataSize)
         let presentationTime = calculatePresentationTime()
+        
+        // 创建待处理帧
+        let pendingFrame = PendingFrame(
+            pixelData: frameData,
+            presentationTime: presentationTime,
+            width: width,
+            height: height
+        )
+        
+        // 添加到待处理队列
+        pendingFramesLock.lock()
+        pendingFrames.append(pendingFrame)
+        pendingFramesLock.unlock()
+    }
 
-        // 添加到视频
-        if pixelBufferAdaptor.append(
-            buffer,
-            withPresentationTime: presentationTime
-        ) {
-            frameCount += 1
-        } else {
-            print("添加帧到视频失败")
+    private func startFrameProcessing() {
+        recordingQueue.async { [weak self] in
+            while self?.isRecording == true {
+                self?.processPendingFrames()
+                Thread.sleep(forTimeInterval: 0.016) // ~60 FPS processing
+            }
         }
     }
 
-    // 计算演示时间戳（使用真实时间，与 captureFrame 调用频率一致）
+    private func processPendingFrames() {
+        pendingFramesLock.lock()
+        let framesToProcess = pendingFrames
+        pendingFrames.removeAll()
+        pendingFramesLock.unlock()
+        
+        for frame in framesToProcess {
+            processFrame(frame)
+        }
+    }
+
+    private func processFrame(_ frame: PendingFrame) {
+        guard let assetWriterInput = self.assetWriterInput,
+              assetWriterInput.isReadyForMoreMediaData,
+              let pixelBufferAdaptor = self.assetWriterPixelBufferAdaptor else {
+            return
+        }
+
+        autoreleasepool {
+            // 从池中获取像素缓冲区
+            var pixelBuffer: CVPixelBuffer?
+            
+            if let pool = pixelBufferPool {
+                CVPixelBufferPoolCreatePixelBuffer(kCFAllocatorDefault, pool, &pixelBuffer)
+            }
+            
+            // 如果池中没有可用的，创建新的
+            if pixelBuffer == nil {
+                let pixelBufferAttributes: [String: Any] = [
+                    kCVPixelBufferPixelFormatTypeKey as String: kCVPixelFormatType_32BGRA,
+                    kCVPixelBufferWidthKey as String: frame.width,
+                    kCVPixelBufferHeightKey as String: frame.height,
+                    kCVPixelBufferIOSurfacePropertiesKey as String: [:],
+                ]
+                
+                CVPixelBufferCreate(
+                    kCFAllocatorDefault,
+                    frame.width,
+                    frame.height,
+                    kCVPixelFormatType_32BGRA,
+                    pixelBufferAttributes as CFDictionary,
+                    &pixelBuffer
+                )
+            }
+            
+            guard let buffer = pixelBuffer else { return }
+            
+            // 锁定像素缓冲区并复制数据
+            CVPixelBufferLockBaseAddress(buffer, CVPixelBufferLockFlags(rawValue: 0))
+            
+            if let baseAddress = CVPixelBufferGetBaseAddress(buffer) {
+                let bytesPerRow = CVPixelBufferGetBytesPerRow(buffer)
+                let dstBuffer = baseAddress.assumingMemoryBound(to: UInt8.self)
+                
+                frame.pixelData.withUnsafeBytes { srcBytes in
+                    let srcBuffer = srcBytes.bindMemory(to: UInt8.self).baseAddress!
+                    
+                    // 使用 SIMD 优化的像素转换
+                    convertRGBAToFlippedBGRA(
+                        src: srcBuffer,
+                        dst: dstBuffer,
+                        width: frame.width,
+                        height: frame.height,
+                        dstBytesPerRow: bytesPerRow
+                    )
+                }
+            }
+            
+            CVPixelBufferUnlockBaseAddress(buffer, CVPixelBufferLockFlags(rawValue: 0))
+            
+            // 添加到视频
+            if pixelBufferAdaptor.append(buffer, withPresentationTime: frame.presentationTime) {
+                frameCount += 1
+            }
+        }
+    }
+
+    // SIMD 优化的像素转换函数
+    private func convertRGBAToFlippedBGRA(
+        src: UnsafePointer<UInt8>,
+        dst: UnsafeMutablePointer<UInt8>,
+        width: Int,
+        height: Int,
+        dstBytesPerRow: Int
+    ) {
+        let srcBytesPerRow = width * 4
+        
+        // 使用并发队列处理多行
+        DispatchQueue.concurrentPerform(iterations: height) { y in
+            let flippedY = height - 1 - y
+            let srcRowStart = y * srcBytesPerRow
+            let dstRowStart = flippedY * dstBytesPerRow
+            
+            // 处理每一行的像素
+            for x in 0..<width {
+                let srcIndex = srcRowStart + x * 4
+                let dstIndex = dstRowStart + x * 4
+                
+                // RGBA -> BGRA
+                dst[dstIndex] = src[srcIndex + 2]     // B
+                dst[dstIndex + 1] = src[srcIndex + 1] // G
+                dst[dstIndex + 2] = src[srcIndex]     // R
+                dst[dstIndex + 3] = src[srcIndex + 3] // A
+            }
+        }
+    }
+
     private func calculatePresentationTime() -> CMTime {
-        // 使用真实经过的时间作为时间戳
         let currentTimeAbs = CFAbsoluteTimeGetCurrent()
         let elapsedTime = currentTimeAbs - recordingStartTimeAbs
-
-        // 应用速度倍数（如果需要）
         let adjustedTime = elapsedTime * videoSpeedMultiplier
+        return CMTime(seconds: adjustedTime, preferredTimescale: 600)
+    }
 
-        return CMTime(seconds: adjustedTime, preferredTimescale: 600)  // 使用高精度时间基准
-
-        // 备选方法：如果不需要速度控制，直接使用真实时间
-        // return CMTime(seconds: elapsedTime, preferredTimescale: 600)
+    private func cleanupRecordingResources() {
+        assetWriter = nil
+        assetWriterInput = nil
+        assetWriterPixelBufferAdaptor = nil
+        recordingStartTime = nil
+        recordingStartTimeAbs = 0
+        frameCount = 0
+        pixelBufferPool = nil
+        
+        pendingFramesLock.lock()
+        pendingFrames.removeAll()
+        pendingFramesLock.unlock()
     }
 
     func release() {
@@ -549,10 +613,13 @@ class RenderFromViewTexture: IRender {
         }
         combineTexture.release()
         displayLink?.invalidate()
+        
+        // 释放像素数据缓冲区
+        reusablePixelData?.deallocate()
+        reusablePixelData = nil
     }
 
     deinit {
         release()
     }
-
 }
