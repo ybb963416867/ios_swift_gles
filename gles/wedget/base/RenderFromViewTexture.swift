@@ -174,6 +174,111 @@ class RenderFromViewTexture: IRender {
         Gl2Utils.checkGlError()
     }
     
+    func onScreenShot() {
+        // 确保上下文
+        if EAGLContext.current() == nil {
+            EAGLContext.setCurrent(glkView.context)
+        }
+
+        // 如果有 MSAA，请先 resolve 到一个非 MSAA 的中间 FBO/纹理再从那里读
+        // resolveMSAAFBOIfNeeded()
+
+        // 绑定到最终合成的 FBO（你的代码里最终在 FBO[1] 上做了合成）
+        glBindFramebuffer(GLenum(GL_FRAMEBUFFER), combineTexture.getFboFrameBuffer()[0])
+
+        // 保守：对齐为 1，避免行对齐带来的错行
+        glPixelStorei(GLenum(GL_PACK_ALIGNMENT), 1)
+
+        // 等 GPU 完成渲染
+        glFinish()
+
+        let width = Int(screenWidth)
+        let height = Int(screenHeight)
+        guard width > 0, height > 0 else {
+            print("invalid size \(width)x\(height)")
+            glBindFramebuffer(GLenum(GL_FRAMEBUFFER), 0)
+            return
+        }
+
+        let bytesPerPixel = 4
+        let bytesPerRow = width * bytesPerPixel
+        let size = bytesPerRow * height
+
+        let pixelData = UnsafeMutablePointer<UInt8>.allocate(capacity: size)
+        defer { pixelData.deallocate() }
+
+        // 最稳：按 RGBA 读
+        glReadPixels(
+            0, 0,
+            GLsizei(width), GLsizei(height),
+            GLenum(GL_RGBA),
+            GLenum(GL_UNSIGNED_BYTE),
+            pixelData
+        )
+
+        // 垂直翻转一份
+//        let flipped = UnsafeMutablePointer<UInt8>.allocate(capacity: size)
+//        defer { flipped.deallocate() }
+//        for y in 0..<height {
+//            let src = pixelData.advanced(by: y * bytesPerRow)
+//            let dst = flipped.advanced(by: (height - 1 - y) * bytesPerRow)
+//            memcpy(dst, src, bytesPerRow)
+//        }
+        
+        // 垂直翻转 + 把 Alpha 补成不透明（255）
+        let flipped = UnsafeMutablePointer<UInt8>.allocate(capacity: size)
+        defer { flipped.deallocate() }
+        for y in 0..<height {
+            let srcRow = pixelData.advanced(by: y * bytesPerRow)
+            let dstRow = flipped.advanced(by: (height - 1 - y) * bytesPerRow)
+
+            var x = 0
+            while x < bytesPerRow {
+                // RGBA 顺序（byteOrder32Big + premultipliedLast）
+                dstRow[x + 0] = srcRow[x + 0]   // R
+                dstRow[x + 1] = srcRow[x + 1]   // G
+                dstRow[x + 2] = srcRow[x + 2]   // B
+                dstRow[x + 3] = 255             // A 固定为不透明
+                x += 4
+            }
+        }
+
+        // 用与 RGBA 匹配的 bitmapInfo：32 Big Endian + premultipliedLast
+        //（在 Swift 中使用 .byteOrder32Big + .premultipliedLast 与 RGBA 内存布局对应）
+        let colorSpace = CGColorSpaceCreateDeviceRGB()
+        let bitmapInfo = CGBitmapInfo.byteOrder32Big.rawValue |
+                    CGImageAlphaInfo.premultipliedLast.rawValue
+
+        guard let ctx = CGContext(
+            data: flipped,
+            width: width,
+            height: height,
+            bitsPerComponent: 8,
+            bytesPerRow: bytesPerRow,
+            space: colorSpace,
+            bitmapInfo: bitmapInfo
+        ) else {
+            print("无法创建 CGContext")
+            glBindFramebuffer(GLenum(GL_FRAMEBUFFER), 0)
+            return
+        }
+
+        guard let cgImage = ctx.makeImage() else {
+            print("无法创建 CGImage")
+            glBindFramebuffer(GLenum(GL_FRAMEBUFFER), 0)
+            return
+        }
+
+        // 解绑
+        glBindFramebuffer(GLenum(GL_FRAMEBUFFER), 0)
+
+//        if let fileUrl = UIImage(cgImage: cgImage).saveToDocuments(fileUrl: FileUtil.getPngDocumentsFile("c")) {
+//            print("fileUrl = \(fileUrl.absoluteString)")
+//        } else {
+//            print("fileUrl = nil")
+//        }
+    }
+    
     func loadTexture() {
         let moduleBundle = Bundle(for: Render.self)
         guard
