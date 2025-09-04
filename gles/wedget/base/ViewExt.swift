@@ -16,6 +16,19 @@ extension UIView {
             layer.render(in: rendererContext.cgContext)
         }
     }
+    
+    public func findViewByIdentifier(_ identifier: String) -> UIView? {
+        if self.accessibilityIdentifier == identifier {
+            return self
+        }
+
+        for subviews in self.subviews {
+            if let found = subviews.findViewByIdentifier(identifier) {
+                return found
+            }
+        }
+        return nil
+    }
 }
 
 extension UIImage {

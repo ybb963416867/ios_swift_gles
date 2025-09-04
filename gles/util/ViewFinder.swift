@@ -8,47 +8,63 @@
 import UIKit
 import SwiftUI
 
-// MARK: - 视图查找工具类
-class ViewFinder {
-    
-    // MARK: - 1. 基础查找方法
-    
-    /// 递归查找具有指定 identifier 的视图
-    static func findView(withIdentifier identifier: String, in view: UIView) -> UIView? {
-        // 检查当前视图
-        if view.accessibilityIdentifier == identifier {
-            return view
-        }
-        
-        // 递归检查所有子视图
-        for subview in view.subviews {
-            if let found = findView(withIdentifier: identifier, in: subview) {
-                return found
-            }
-        }
-        
-        return nil
-    }
-}
-
 
 // MARK: - SwiftUI 视图扩展，确保 identifier 被正确设置
 
 struct IdentifiableView<Content: View>: UIViewRepresentable {
     let identifier: String
     let content: Content
-    
-    func makeUIView(context: Context) -> UIView {
+    func updateUIView(_ uiView: UIViewType, context: Context) {
+        ViewRegistry.shared.register(uiView, identifier: identifier)
+    }
+    func makeUIView(context: Context) -> some UIView {
+        print("findViewByIdentifier makeUIView")
         let hostingController = UIHostingController(rootView: content)
         let view = hostingController.view!
         view.isOpaque = false
         view.accessibilityIdentifier = identifier
         view.backgroundColor = .clear
+        ViewRegistry.shared.register(view, identifier: identifier)
+        
         return view
     }
-    
-    func updateUIView(_ uiView: UIView, context: Context) {}
+
 }
+
+
+public class ViewRegistry {
+    public static let shared = ViewRegistry()
+    private var views = [String: Weak<UIView>]()
+    
+    class Weak<T: AnyObject> {
+        weak var value: T?
+        init(_ value: T) { self.value = value }
+    }
+    
+    public func register(_ view: UIView, identifier: String) {
+        views[identifier] = Weak(view)
+        
+        // 同时设置 accessibilityIdentifier 作为备用
+        view.accessibilityIdentifier = identifier
+    }
+    
+    public func find(_ identifier: String) -> UIView? {
+        // 先尝试从注册表找
+        if let view = views[identifier]?.value {
+            print("findViewByIdentifier = 找到了")
+            return view
+        }
+        
+       guard let windowScene = UIApplication.shared.connectedScenes.first
+            as? UIWindowScene,
+        let window = windowScene.windows.first,
+             let rootView = window.rootViewController?.view else {
+           return nil
+       }
+        return rootView.findViewByIdentifier(identifier)
+    }
+}
+
 
 // 方案2: 创建一个专门的透明背景包装器
 struct TransparentBackgroundWrapper<Content: View>: View {
@@ -64,23 +80,6 @@ struct TransparentBackgroundWrapper<Content: View>: View {
     }
 }
 
-struct IdentifiableViewV1<Content: View>: UIViewRepresentable {
-    let identifier: String
-    let content: Content
-    
-    func makeUIView(context: Context) -> UIView {
-        let wrappedContent = TransparentBackgroundWrapper(content: content)
-        let hostingController = UIHostingController(rootView: wrappedContent)
-        let view = hostingController.view!
-        view.isOpaque = false
-        view.accessibilityIdentifier = identifier
-        view.backgroundColor = .clear
-        return view
-    }
-    
-    func updateUIView(_ uiView: UIView, context: Context) {}
-}
-
 
 // 使用扩展来包装 SwiftUI 视图
 extension View {
@@ -88,8 +87,4 @@ extension View {
         IdentifiableView(identifier: identifier, content: self)
     }
     
-    // V2版本
-    func identifiableV1(_ identifier: String) -> some View {
-        IdentifiableViewV1(identifier: identifier, content: self)
-    }
 }
